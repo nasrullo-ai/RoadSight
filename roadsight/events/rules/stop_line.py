@@ -1,0 +1,41 @@
+"""stop_line: a vehicle stops past the stop line (but not inside the intersection) during red."""
+
+from __future__ import annotations
+
+from roadsight.events.base import EventRule, Segment, register, runs_min_duration
+from roadsight.events.rules._stopline import approach_side, front_points
+from roadsight.scene.geometry import distance_to_polyline, points_in_any, side_of_polyline
+
+
+@register
+class StopLineViolation(EventRule):
+    label = "stop_line"
+
+    def detect(self, tracks, signal, meta):
+        if not self.scene.stop_lines or not signal.known():
+            return []
+        v_stop = self.p("stop_speed", 0.1)
+        min_stop = self.p("min_stop_sec", 2.0)
+        max_past_bl = self.p("max_past_bl", 3.0)
+        veh = tracks.of_kind("vehicle", reliable=True)
+        groups = [g for _, g in veh.groupby("track_id", sort=True)]
+        out = []
+        for line in self.scene.stop_lines:
+            side_from = approach_side(line, groups, tracks.scale)
+            for g in groups:
+                t = g["t"].to_numpy()
+                fx, fy = front_points(g, tracks.scale)
+                past = side_of_polyline(fx, fy, line.points) != side_from
+                near = distance_to_polyline(fx, fy, line.points) <= max_past_bl * tracks.scale(fy)
+                bad = past & near & (g["speed"].to_numpy() < v_stop)
+                if self.scene.intersection:
+                    bad &= ~points_in_any(g["sx"].to_numpy(), g["sy"].to_numpy(), self.scene.intersection)
+                for s, e in runs_min_duration(bad, t, min_stop):
+                    red = [tt for tt in t[s : e + 1] if signal.state_at(line.signal, tt) == "red"]
+                    if len(red) < 0.5 * (e - s + 1):
+                        continue
+                    green = signal.next_change(line.signal, float(t[s]), "green")
+                    end = float(t[e]) if green is None else min(float(t[e]), green)
+                    if end > t[s]:
+                        out.append(Segment(float(t[s]), end, self.label, 0.7, {"tracks": [int(g["track_id"].iloc[0])], "line": line.id}))
+        return out

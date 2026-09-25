@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>Results on the sample videos</h1>
+  <p class="lede">Every sample, annotated by the submitted code: boxes with track IDs and speeds, the scene overlay,
+    banners for active events and the risk bar. Click an event in the timeline or the table to jump to it.</p>
+  <nav class="ui" id="picker" aria-label="Sample videos" style="display:flex;gap:.5rem;flex-wrap:wrap"></nav>
+
+  <section id="view" hidden>
+    <h2 id="title"></h2>
+    <div class="video-grid">
+      <figure><video id="player" controls playsinline preload="metadata"></video><figcaption id="caption"></figcaption></figure>
+      <div><h3>Events</h3><div id="events"></div><h3>Detections</h3><p id="tracks" class="ui"></p><h3>Runtime</h3><p id="timing" class="ui"></p></div>
+    </div>
+    <h3>Timeline</h3>
+    <div class="legend"><span><i style="background:var(--pred)"></i>predicted</span><span><i style="background:var(--gt)"></i>our ground-truth label</span></div>
+    <div id="timeline"></div>
+    <h3>Accident risk, frame by frame</h3>
+    <div id="risk"></div>
+    <h3>Closest calls below the confidence gate</h3>
+    <p class="muted">The strongest candidates (confidence 0.4 or more) that the per-class gate removed. They show where
+      the rules came close to firing.</p>
+    <div id="cands"></div>
+  </section>
+
+  <h2>Failure cases we know about</h2>
+  <ul>
+    <li>Dense, shallow-angle traffic: closer vehicles hide the bottom of farther ones, so box bottoms jump. We take
+      velocity from the box top, which cut 1-in-1000 acceleration spikes from 4.1 to 1.6 body lengths/s&sup2; on the highway clip,
+      but near-miss candidates in stop-and-go traffic still reach 0.63 confidence against a 0.70 gate.</li>
+    <li>Far-field objects under about 3% of the frame height have noisy speed and heading. Risk features and near-miss
+      pairs ignore them, so conflicts far from the camera are missed.</li>
+    <li>Signal-dependent classes (red light, stop line) need the signal head inside the frame and a drawn stop line.
+      Without them the rules switch themselves off rather than guess.</li>
+    <li>ID switches after occlusion: tracks are split at implausible jumps, and stationary vehicles are re-linked by
+      position, but a pedestrian hidden behind a bus becomes two tracks.</li>
+  </ul>
+</main>
+<footer id="site-footer"></footer>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  let rows = [];
+  try { rows = await RS.getJSON("media/index.json"); } catch (e) { /* no renders yet */ }
+  if (!rows.length) { $("picker").innerHTML = '<p class="muted">No rendered samples yet. Run <code>make render</code>.</p>'; return; }
+  $("picker").innerHTML = rows.map((r) => `<a class="btn secondary" href="#${encodeURIComponent(r.stem)}">${RS.esc(r.video)}</a>`).join("");
+
+  async function load(stem) {
+    const r = await RS.getJSON(`media/${stem}.json`);
+    $("view").hidden = false;
+    $("title").textContent = r.meta.video_id;
+    const player = $("player");
+    player.src = `media/${stem}.mp4`;
+    $("caption").textContent = `${r.meta.width}x${r.meta.height}, ${r.meta.fps.toFixed(1)} fps, ${r.meta.duration.toFixed(1)} s. Speeds are in body lengths per second.`;
+    const seek = (t) => { player.currentTime = t; player.play(); };
+    const tl = RS.timeline($("timeline"), { events: r.events, gt: r.gt_events || [], duration: r.meta.duration, onSeek: seek });
+    const rc = RS.riskChart($("risk"), r.risk, { duration: r.meta.duration, onSeek: seek });
+    player.ontimeupdate = () => { tl.setTime(player.currentTime); rc.setTime(player.currentTime); };
+    RS.eventsTable($("events"), r.events, seek);
+    $("tracks").textContent = Object.entries(r.tracks).map(([k, v]) => `${v} ${k}`).join(", ") || "none";
+    $("timing").textContent = `Events ${r.timing.part_a_sec} s, risk ${r.timing.part_b_sec} s: ${r.timing.rtf}x the video length.`;
+    const gated = (r.candidates || []).filter((c) => c[3] >= 0.4 && !r.events.some((e) => e[2] === c[2] && e[0] <= c[1] && c[0] <= e[1]))
+      .sort((a, b) => b[3] - a[3]).slice(0, 10);
+    $("cands").innerHTML = gated.length ? `<div class="table-scroll"><table><thead><tr><th>Class</th><th class="num">Start</th><th class="num">End</th><th class="num">Confidence</th></tr></thead><tbody>
+      ${gated.map((c) => `<tr><td>${RS.esc(RS.pretty(c[2]))}</td><td class="num">${RS.fmt(c[0])}</td><td class="num">${RS.fmt(c[1])}</td><td class="num">${c[3].toFixed(2)}</td></tr>`).join("")}
+      </tbody></table></div>` : '<p class="muted ui">None.</p>';
+  }
+  const pickFromHash = () => load(decodeURIComponent(location.hash.slice(1)) || rows[0].stem);
+  window.addEventListener("hashchange", pickFromHash);
+  pickFromHash();
+})();
+</script>
+</body>
+</html>

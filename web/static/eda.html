@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight data</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>What the videos look like</h1>
+  <p class="lede">Before writing rules we measured the footage: how many road users of each kind, where they move,
+    how fast and in which direction. The plots below come from <code>tools/eda.py</code> running the submitted
+    perception stack.</p>
+
+  <h2>The videos</h2>
+  <div id="summary" class="table-scroll"><p class="muted ui">Loading.</p></div>
+
+  <div id="videos"></div>
+
+  <h2>Findings that changed the design</h2>
+  <ul>
+    <li><strong>Box bottoms are unreliable in dense traffic.</strong> In the shallow-angle city clip, closer vehicles cover
+      the bottom of farther ones, and the foot point jumps. Velocity is now taken from the box top, which is rarely
+      covered; the ground point is the top plus the track's median box height.</li>
+    <li><strong>Boxes cut by the frame border lie.</strong> A car entering from the bottom edge appeared to drive backwards
+      because its box bottom was pinned to the border. Border rows are excluded from kinematics.</li>
+    <li><strong>Tracks jump between vehicles.</strong> After two-second occlusions ByteTrack sometimes re-attached an ID
+      to another car across the frame. Tracks are now split at jumps faster than 20 body lengths per second.</li>
+    <li><strong>Noise differs per video.</strong> The 1-in-100 braking value in normal traffic is 1.3 BL/s&sup2; on the
+      highway and 6.4 BL/s&sup2; in the city clip. Near-miss and risk thresholds therefore scale with each video's own noise.</li>
+    <li><strong>Most missed vehicles were faint, not invisible.</strong> At 640 px the detector found 22 boxes in a busy
+      city frame, but only 5 were confident enough to start a track. Detecting at 960 px and starting tracks at 0.3
+      raised coverage from 4.5 to 23.8 tracked objects per frame.</li>
+    <li><strong>Lanes can be learned.</strong> Two directions of travel separate cleanly in the flow field, which lets
+      wrong-way detection run before anyone draws lanes.</li>
+  </ul>
+</main>
+<footer id="site-footer"></footer>
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  let data;
+  try { data = await RS.getJSON("eda/eda.json"); } catch (e) { $("summary").innerHTML = '<p class="muted ui">EDA outputs are not published yet. Run <code>make eda</code>.</p>'; return; }
+  const v = data.videos;
+  $("summary").innerHTML = `<table><thead><tr><th>Video</th><th class="num">Resolution</th><th class="num">fps</th><th class="num">Length</th><th>Lighting</th><th>Tracks</th><th class="num">Median speed</th></tr></thead><tbody>
+    ${v.map((x) => `<tr><td>${RS.esc(x.video)}</td><td class="num">${x.width}x${x.height}</td><td class="num">${x.fps.toFixed(1)}</td><td class="num">${x.duration.toFixed(1)} s</td>
+    <td>${RS.esc(x.condition)} (${x.brightness})</td><td>${Object.entries(x.tracks_per_class).map(([k, n]) => `${n} ${RS.esc(k)}`).join(", ")}</td>
+    <td class="num">${x.speed_bl_s.p50} BL/s</td></tr>`).join("")}</tbody></table>`;
+  $("videos").innerHTML = v.map((x, i) => `<section><h2>${RS.esc(x.video)}</h2>
+      <h3>Road users in view, per second</h3><div id="counts-${i}"></div>
+      <div class="cols">
+        <figure><img src="eda/${x.images.heatmap}" alt="Where road users were, as a heatmap" loading="lazy"><figcaption>Where road users stand and drive.</figcaption></figure>
+        <figure><img src="eda/${x.images.trajectories}" alt="Trajectories coloured by direction" loading="lazy"><figcaption>Trajectories, coloured by direction of travel.</figcaption></figure>
+        <figure><img src="eda/${x.images.flow}" alt="Learned lane-flow field" loading="lazy"><figcaption>Learned lane flow; arrows are brighter where more tracks agree. Outline: learned road surface.</figcaption></figure>
+      </div></section>`).join("");
+  v.forEach((x, i) => RS.lineChart($(`counts-${i}`), x.counts_over_time, { yLabel: "tracks in view", xLabel: "seconds" }));
+})();
+</script>
+</body>
+</html>

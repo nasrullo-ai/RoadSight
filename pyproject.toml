@@ -1,0 +1,20 @@
+[project]
+name = "roadsight"
+version = "1.0.0"
+description = "Offline traffic event detection and causal accident risk for a fixed CCTV camera"
+requires-python = ">=3.10"
+
+[tool.black]
+line-length = 140
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B905", "B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

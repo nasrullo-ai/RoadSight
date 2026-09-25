@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Nasrullo",
+    "role": "Team lead, perception and rules",
+    "contributions": "Specification, detector and tracker integration, Tier 1 event rules.",
+    "past": "",
+    "photo": "",
+    "github": "",
+    "linkedin": "",
+    "portfolio": ""
+  },
+  {
+    "name": "Team member 2",
+    "role": "Risk model and evaluation",
+    "contributions": "Causal risk estimator, dev labels, threshold tuning.",
+    "past": "",
+    "photo": "",
+    "github": "",
+    "linkedin": "",
+    "portfolio": ""
+  },
+  {
+    "name": "Team member 3",
+    "role": "Website and demo",
+    "contributions": "Website, live demo backend, EDA and annotated renders.",
+    "past": "",
+    "photo": "",
+    "github": "",
+    "linkedin": "",
+    "portfolio": ""
+  }
+]

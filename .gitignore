@@ -1,0 +1,30 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.cache/
+runs/
+*.egg-info/
+
+# Sample videos are large and not ours to redistribute
+data/samples/*
+!data/samples/README.md
+
+# Demo job scratch space
+web/jobs/
+
+# Local scratch
+outputs/*
+!outputs/predictions_samples.json
+*.log
+
+# Hugging Face Space build output
+build/
+
+# Generated website media (make render / make eda); derived from sample clips we do not redistribute
+web/static/media/
+web/static/eda/
+
+# Spec PDF (SPEC.md is the tracked copy)
+*.pdf

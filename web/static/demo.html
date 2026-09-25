@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight live demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/config.js"></script>
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>Live demo</h1>
+  <p class="lede">Upload a road-camera video of up to two minutes and 100 MB. The server runs the same code as the
+    submission, on CPU with the small detector, so a two-minute clip takes a few minutes.</p>
+
+  <form id="upload" class="ui">
+    <label class="drop" id="drop" for="file">
+      <strong>Choose a video</strong> or drop it here<br><span class="muted">MP4, MOV, AVI, MKV or WebM</span>
+      <input type="file" id="file" accept="video/*" hidden>
+    </label>
+    <p id="chosen" class="muted"></p>
+    <button class="btn" type="submit" id="go" disabled>Analyse video</button>
+  </form>
+
+  <section id="progress-box" hidden>
+    <h2>Analysing</h2>
+    <p id="stage" class="ui">Uploading</p>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="bar"><div></div></div>
+  </section>
+  <div id="error" class="alert" hidden role="alert"></div>
+
+  <section id="result" hidden>
+    <h2>Result</h2>
+    <div class="video-grid">
+      <figure><video id="player" controls playsinline preload="metadata"></video>
+        <figcaption>Boxes show class, track ID and speed in body lengths per second. The bar at the top right is the risk score.</figcaption></figure>
+      <div>
+        <div class="cols" id="stats"></div>
+        <h3>Events</h3>
+        <div id="events"></div>
+        <p><a class="btn secondary" id="download" href="#">Download JSON</a></p>
+      </div>
+    </div>
+    <h3>Timeline</h3>
+    <div class="legend"><span><i style="background:var(--pred)"></i>detected event, click to jump</span></div>
+    <div id="timeline"></div>
+    <h3>Accident risk</h3>
+    <div id="risk"></div>
+  </section>
+</main>
+<footer id="site-footer"></footer>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const API = window.ROADSIGHT_API || "";
+  let file = null;
+
+  function pick(f) {
+    file = f;
+    $("chosen").textContent = f ? `${f.name}, ${(f.size / 1048576).toFixed(1)} MB` : "";
+    $("go").disabled = !f;
+    if (f && f.size > 100 * 1048576) { showError("The file is larger than 100 MB. Trim or compress it and choose it again."); $("go").disabled = true; }
+    else hideError();
+  }
+  $("file").addEventListener("change", (e) => pick(e.target.files[0]));
+  const drop = $("drop");
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); pick(e.dataTransfer.files[0]); });
+
+  function showError(msg) { $("error").textContent = msg; $("error").hidden = false; }
+  function hideError() { $("error").hidden = true; }
+  function setProgress(p, stage) {
+    $("bar").firstElementChild.style.width = `${Math.round(100 * p)}%`;
+    $("bar").setAttribute("aria-valuenow", Math.round(100 * p));
+    if (stage) $("stage").textContent = stage;
+  }
+
+  $("upload").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!file) return;
+    hideError();
+    $("result").hidden = true;
+    $("progress-box").hidden = false;
+    $("go").disabled = true;
+    const form = new FormData();
+    form.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API}/api/analyze`);
+    xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) setProgress(0.05 * ev.loaded / ev.total, `Uploading ${Math.round(100 * ev.loaded / ev.total)}%`); };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch (err) { /* keep empty */ }
+      if (xhr.status !== 200) { fail(body.detail || "The upload was rejected. Check the file and try again."); return; }
+      poll(body.job_id);
+    };
+    xhr.onerror = () => fail("The server could not be reached. Check your connection and try again.");
+    xhr.send(form);
+  });
+
+  function fail(msg) { $("progress-box").hidden = true; $("go").disabled = !file; showError(msg); }
+
+  async function poll(id) {
+    try {
+      const s = await RS.getJSON(`${API}/api/status/${id}`);
+      if (s.state === "error") return fail(s.message);
+      const stage = s.state === "queued" && s.queue_position > 0 ? `Waiting for ${s.queue_position} earlier video${s.queue_position > 1 ? "s" : ""}` : s.stage;
+      setProgress(0.05 + 0.95 * s.progress, `${stage} (${Math.round(100 * s.progress)}%)`);
+      if (s.state === "done") return show(id);
+      setTimeout(() => poll(id), 1500);
+    } catch (err) { setTimeout(() => poll(id), 3000); }
+  }
+
+  async function show(id) {
+    const r = await RS.getJSON(`${API}/api/result/${id}`);
+    $("progress-box").hidden = true;
+    $("go").disabled = false;
+    $("result").hidden = false;
+    const player = $("player");
+    player.src = `${API}${r.annotated_video_url}`;
+    const seek = (t) => { player.currentTime = t; player.play(); };
+    const tl = RS.timeline($("timeline"), { events: r.events, duration: r.meta.duration, onSeek: seek });
+    const rc = RS.riskChart($("risk"), r.risk, { duration: r.meta.duration, onSeek: seek });
+    player.ontimeupdate = () => { tl.setTime(player.currentTime); rc.setTime(player.currentTime); };
+    RS.eventsTable($("events"), r.events, seek);
+    const tracks = Object.entries(r.tracks).map(([k, v]) => `${v} ${RS.esc(k)}`).join(", ") || "none";
+    const alarm = r.risk.filter((x) => x[1] >= 0.5).length / Math.max(1, r.risk.length);
+    $("stats").innerHTML = `<div class="stat"><b>${r.events.length}</b>events</div>
+      <div class="stat"><b>${r.meta.duration.toFixed(1)} s</b>${r.meta.width}x${r.meta.height}, ${r.meta.fps.toFixed(1)} fps</div>
+      <div class="stat"><b>${(100 * alarm).toFixed(1)}%</b>of frames above the risk alarm</div>
+      <p class="muted" style="grid-column:1/-1">Tracked: ${tracks}. Processed on ${RS.esc(r.timing.device)} in ${(r.timing.part_a_sec + r.timing.part_b_sec).toFixed(0)} s.</p>`;
+    $("download").href = `${API}/api/json/${id}`;
+  }
+})();
+</script>
+</body>
+</html>

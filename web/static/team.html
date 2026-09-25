@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight team</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>Team</h1>
+  <div class="team" id="team"><p class="muted ui">Loading.</p></div>
+</main>
+<footer id="site-footer"></footer>
+<script>
+RS.getJSON("data/team.json").then((people) => {
+  document.getElementById("team").innerHTML = people.map((p) => `<article class="person">
+    <img src="${RS.esc(p.photo || "img/person.svg")}" alt="Photo of ${RS.esc(p.name)}" loading="lazy">
+    <h3>${RS.esc(p.name)}</h3><p class="ui"><strong>${RS.esc(p.role)}</strong></p>
+    <p>${RS.esc(p.contributions)}</p>
+    ${p.past ? `<p class="muted">${RS.esc(p.past)}</p>` : ""}
+    <p class="ui">${[["GitHub", p.github], ["LinkedIn", p.linkedin], ["Portfolio", p.portfolio]].filter(([, u]) => u)
+      .map(([n, u]) => `<a href="${RS.esc(u)}">${n}</a>`).join(" &nbsp; ")}</p></article>`).join("");
+});
+</script>
+</body>
+</html>

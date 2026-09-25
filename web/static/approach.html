@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight approach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>Approach</h1>
+  <p class="lede">One camera never moves, so we learn only what has to be learned, which is where the road users are.
+    Everything else is explicit geometry and kinematics you can read, test and tune: when a car counts as stopped,
+    which way a lane flows, how close two vehicles came.</p>
+
+  <h2>Two parts, one perception stack</h2>
+  <div class="cols">
+    <div>
+      <h3>Part A: events</h3>
+      <p>Reads the whole file, so it can smooth tracks in both directions. Frames are decoded in order and every
+        second one goes to the detector at 960 px in FP16 batches of 16. ByteTrack links boxes into tracks. Kinematics turn
+        tracks into speed, heading and acceleration. Fourteen rules turn those into segments, and post-processing
+        makes the output valid.</p>
+    </div>
+    <div>
+      <h3>Part B: risk</h3>
+      <p>A separate copy of the same detector and tracker receives frames one at a time and never sees the future,
+        the file or Part A's output. Every third frame it measures time to collision, braking, swerving, wrong-way
+        motion and pedestrians on the road. A logistic combiner, a causal moving average and a one-second peak hold
+        turn those measurements into a 0 to 1 score.</p>
+    </div>
+  </div>
+
+  <h2>What is learned and what is a rule</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Stage</th><th>Kind</th><th>Details</th></tr></thead>
+    <tbody>
+      <tr><td>Object detection</td><td>Learned</td><td>YOLO11m, COCO weights, FP16; 960 px for events, 640 px for risk. Keeps person, bicycle, car, motorcycle, bus and truck, plus animals and luggage for obstacles. YOLO11n on CPU.</td></tr>
+      <tr><td>Tracking</td><td>Algorithm</td><td>ByteTrack with a 30-frame buffer. Tracks are split at physically impossible jumps and short gaps are interpolated.</td></tr>
+      <tr><td>Kinematics</td><td>Rule</td><td>Savitzky-Golay smoothing (Part A) or least-squares windows (Part B). Speeds are normalised by the typical vehicle size at that image row, so one threshold works near and far.</td></tr>
+      <tr><td>Scene</td><td>Hand-drawn, with automatic fall-back</td><td>Lanes, stop lines, crosswalks and zones come from <code>scene.json</code>. When absent, the road surface and lane flow are learned from the video's own tracks.</td></tr>
+      <tr><td>Events</td><td>Rule</td><td>One class per file in <code>roadsight/events/rules/</code>; every threshold lives in <code>configs/default.yaml</code>.</td></tr>
+      <tr><td>Risk</td><td>Hand-set logistic, refittable</td><td>Weights in <code>weights/risk.json</code>; <code>tools/fit_risk.py</code> refits them on labelled accidents.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>The fourteen rules</h2>
+  <p>A class that is predicted but never occurs adds a zero to the macro average, so each class ships only behind a
+    confidence gate. Classes that need scene geometry stay silent until it is drawn.</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Class</th><th>Starts when</th><th>Ends when</th><th>Main signal</th><th>Needs</th></tr></thead>
+    <tbody>
+      <tr><td>stopped vehicle</td><td>Vehicle stops</td><td>Moves again or leaves</td><td>Below 0.1 BL/s for 10 s while same-direction traffic keeps passing</td><td><span class="pill on">auto road</span></td></tr>
+      <tr><td>congestion</td><td>Queue stops moving</td><td>Queue clears</td><td>Median speed per travel direction below 0.2 BL/s with many vehicles</td><td><span class="pill on">auto road</span></td></tr>
+      <tr><td>jaywalking</td><td>Pedestrian steps onto the road</td><td>Leaves it</td><td>Foot point inside the carriageway, away from crosswalks and parked cars</td><td><span class="pill on">auto road</span></td></tr>
+      <tr><td>wrong way</td><td>Enters against the flow</td><td>Back in a correct lane or gone</td><td>Heading against the lane flow for 1.5 s over at least one car length</td><td><span class="pill on">auto flow</span></td></tr>
+      <tr><td>accident</td><td>First contact</td><td>Everyone involved stops</td><td>Box contact, speed collapse, then standing still or people appearing</td><td><span class="pill on">none</span></td></tr>
+      <tr><td>near miss</td><td>Evasive action starts</td><td>Pair separates</td><td>Time to collision under 1 s plus braking or swerving above the video's own noise</td><td><span class="pill on">none</span></td></tr>
+      <tr><td>red light</td><td>Front crosses the stop line on red</td><td>Clears the junction</td><td>Signal colour in a drawn box plus line crossing</td><td><span class="pill scene">stop line, signal</span></td></tr>
+      <tr><td>stop line</td><td>Stops past the line on red</td><td>Signal turns green</td><td>Stationary beyond the line during red</td><td><span class="pill scene">stop line, signal</span></td></tr>
+      <tr><td>failure to yield</td><td>Vehicle enters the crosswalk</td><td>Leaves it</td><td>Pedestrian on the same crosswalk nearby</td><td><span class="pill on">auto crosswalk</span></td></tr>
+      <tr><td>solid line crossing</td><td>Wheels reach the line</td><td>Fully across</td><td>Footprint straddles a drawn solid line, then stays on the other side</td><td><span class="pill scene">solid lines</span></td></tr>
+      <tr><td>illegal U-turn</td><td>Turn starts</td><td>Heading settles</td><td>Heading change over 150&deg; inside a no-U-turn zone</td><td><span class="pill scene">zone</span></td></tr>
+      <tr><td>illegal turn</td><td>Turn starts</td><td>Heading settles</td><td>Entry and exit arms not in the allowed-movement table</td><td><span class="pill scene">arms, table</span></td></tr>
+      <tr><td>road obstacle</td><td>Object appears</td><td>Removed</td><td>Animal or luggage on the carriageway for several seconds</td><td><span class="pill on">auto road</span></td></tr>
+      <tr><td>fire or smoke</td><td>Smoke appears</td><td>Clears</td><td>Flame colour with flicker, persisting 3 s</td><td><span class="pill off">off by default</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">BL/s is body lengths per second: pixel speed divided by the typical vehicle size at that image row.</p>
+
+  <h2>Constraints we designed around</h2>
+  <ul>
+    <li><strong>Offline.</strong> All weights ship in the repository and every download path is disabled; a test runs the pipeline with sockets blocked.</li>
+    <li><strong>Deterministic.</strong> Fixed seeds, deterministic cuDNN, sequential decoding and a tracker with per-instance IDs. A test runs each video twice and compares the output byte for byte.</li>
+    <li><strong>Causal risk.</strong> The risk model keeps its own state and only past frames. A test checks that truncating the video never changes earlier scores.</li>
+    <li><strong>Never crash.</strong> Every rule runs inside its own guard; a failing rule drops its class for that video, not the video.</li>
+    <li><strong>Time.</strong> Part A and Part B together take 0.7x to 1.0x the video length on a laptop GPU, against a 3x limit. The stride rises automatically only when a machine is far slower.</li>
+  </ul>
+
+  <h2>Models, data and licences</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Component</th><th>Licence</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td><a href="https://github.com/ultralytics/ultralytics">Ultralytics YOLO11</a> (m, s, n; COCO weights)</td><td>AGPL-3.0</td><td>Detection, unchanged COCO weights</td></tr>
+      <tr><td><a href="https://github.com/ifzhang/ByteTrack">ByteTrack</a> (Ultralytics implementation)</td><td>MIT / AGPL-3.0</td><td>Multi-object tracking</td></tr>
+      <tr><td><a href="https://cocodataset.org">COCO</a></td><td>CC BY 4.0</td><td>Training data of the detector weights</td></tr>
+      <tr><td>Organizer sample videos</td><td>Competition terms</td><td>Development labels and tuning</td></tr>
+    </tbody>
+  </table></div>
+</main>
+<footer id="site-footer"></footer>
+</body>
+</html>

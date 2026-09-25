@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "normalized": true,
+  "note": "Draw with: python tools/scene_editor.py --video <sample.mp4>. Empty lists = use automatic fall-backs or disable the dependent rules.",
+  "carriageway": [],
+  "lanes": [],
+  "stop_lines": [],
+  "crosswalks": [],
+  "solid_lines": [],
+  "no_u_turn_zones": [],
+  "exit_zones": [],
+  "allowed_movements": [],
+  "signal_rois": [],
+  "queue_zones": [],
+  "intersection": [],
+  "fixed_objects": [],
+  "right_turn_on_red": false
+}

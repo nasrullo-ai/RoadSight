@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight links</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>Links</h1>
+  <div class="table-scroll"><table>
+    <thead><tr><th>What</th><th>Where</th></tr></thead>
+    <tbody id="links"></tbody>
+  </table></div>
+  <h2>Reproduce the sample predictions</h2>
+  <p>On a machine with Python 3.10+ and an NVIDIA GPU:</p>
+  <pre class="panel ui" style="overflow-x:auto">pip install -r requirements.txt
+python run_submission.py --videos data/samples --out outputs/predictions_samples.json
+python evaluate.py --pred outputs/predictions_samples.json --validate-only</pre>
+  <p>Or without installing anything but Docker:</p>
+  <pre class="panel ui" style="overflow-x:auto">docker build -t roadsight .
+docker run --gpus all --network none -v $PWD/data/samples:/videos -v $PWD/outputs:/out roadsight</pre>
+</main>
+<footer id="site-footer"></footer>
+<script>
+RS.getJSON("data/links.json").then((l) => {
+  const rows = [
+    ["Source code", l.repo, l.repo || "Repository link to be added"],
+    ["Detector weights", l.weights, "weights/ in the repository (YOLO11m, s, n)"],
+    ["Sample predictions", "data/predictions_samples.json", "predictions_samples.json"],
+    ["Live demo", "demo.html", "Upload a video"],
+    ["Technical report", "report.html", "One page"],
+  ];
+  document.getElementById("links").innerHTML = rows.map(([what, href, text]) =>
+    `<tr><td>${what}</td><td>${href ? `<a href="${RS.esc(href)}">${RS.esc(text)}</a>` : RS.esc(text)}</td></tr>`).join("");
+});
+</script>
+</body>
+</html>

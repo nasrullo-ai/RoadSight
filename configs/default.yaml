@@ -1,0 +1,239 @@
+# RoadSight default configuration. Relative paths resolve against the repo root.
+# Speeds are in body-lengths per second (BL/s), accelerations in BL/s^2 (see roadsight/perception/kinematics.py).
+
+seed: 0
+overrides_file: configs/tuned.yaml   # written by tools/tune.py; merged on top of this file when present
+device: auto            # auto | cuda | cpu
+
+video:
+  stride: 2             # process every 2nd frame on GPU (25 fps -> 12.5 Hz)
+  stride_cpu: 5
+  adaptive: true        # raise stride only when Part A alone runs slower than real time
+  adaptive_trigger_rtf: 1.0
+  adaptive_goal_rtf: 0.6
+  max_stride: 4
+  probe_frames: 200
+  thumb_interval_sec: 1.0
+  thumb_width: 160
+
+detector:
+  weights: weights/yolo11m.pt
+  weights_cpu: weights/yolo11n.pt
+  imgsz: 960            # small far-field vehicles: 960 px finds ~60% more boxes than 640 on 1080p CCTV
+  imgsz_cpu: 640
+  half: true
+  batch: 16
+  conf: 0.1             # low-score boxes feed ByteTrack's second association; tracks start at new_track_thresh
+  iou: 0.5
+  classes: [0, 1, 2, 3, 5, 7]          # person, bicycle, car, motorcycle, bus, truck
+  extra_classes: [16, 17, 18, 19, 24, 26, 28]   # animals and dropped objects for road_obstacle
+
+tracker:
+  max_jump_speed_bl: 20.0   # split a track at implausible jumps (ID switches)
+  max_size_ratio: 1.8
+  track_high_thresh: 0.25
+  track_low_thresh: 0.1
+  new_track_thresh: 0.3
+  track_buffer: 30       # processed frames
+  match_thresh: 0.8
+  fuse_score: true
+  min_track_sec: 1.0
+  max_interp_gap_sec: 1.0
+  reliable_min_conf: 0.4       # rules ignore tracks with lower mean detection confidence ...
+  reliable_min_size_frac: 0.025  # ... or a median box size below 2.5% of the frame height
+
+kinematics:
+  savgol_window_sec: 1.0
+  savgol_order: 2
+
+scene:
+  path: configs/scene.json
+  grid_cols: 64
+  road_min_tracks: 2
+  road_min_frac: 0.0
+  road_close: 2
+  road_dilate: 1
+  flow_min_tracks: 3
+  flow_blur: 1
+  moving_speed: 0.5
+  auto_crosswalks: true
+  crosswalk_min_persons: 4
+  online_flow_min_support: 30
+
+signal:
+  smooth_sec: 1.0
+
+# Per-class rules. `enabled` + `min_confidence` gate each class (SPEC section 4);
+# `merge_gap`, `min_len`, `start_offset`, `end_offset` drive post-processing (SPEC section 9).
+events:
+  # ---------------- Tier 1
+  stopped_vehicle:
+    enabled: true
+    min_confidence: 0.5
+    merge_gap: 2.0
+    min_len: 10.0
+    stop_speed: 0.1
+    go_speed: 0.3
+    go_sec: 1.0
+    min_stationary_sec: 10.0
+    moving_speed: 0.5
+    require_moving_before: true
+    moved_before_bl: 3.0        # net displacement in the 15 s before the stop
+    lone_min_sec: 60.0
+    pass_radius_bl: 4.0
+    link_gap_sec: 5.0
+    link_iou: 0.6
+  congestion:
+    enabled: true
+    min_confidence: 0.5
+    merge_gap: 5.0
+    min_len: 15.0
+    bin_sec: 1.0
+    speed_thr: 0.2
+    min_vehicles: 6
+    capacity_frac: 0.6
+    min_len_sec: 15.0
+    min_len_no_signal_sec: 60.0
+    green_overlap_sec: 5.0
+  jaywalking:
+    enabled: true
+    min_confidence: 0.5
+    merge_gap: 2.0
+    min_len: 1.0
+    min_sec: 1.0
+    merge_gap_sec: 2.0
+    edge_margin_bl: 0.3
+    crosswalk_buffer_bl: 0.25
+    vehicle_exit_bl: 2.0
+  wrong_way:
+    enabled: true
+    min_confidence: 0.5
+    merge_gap: 2.0
+    min_len: 1.5
+    min_speed: 0.5
+    cos_thr: -0.5
+    min_sec: 1.5
+    min_strength: 0.6
+    min_displacement_bl: 2.0
+    min_median_speed: 0.8
+    min_real_frac: 0.7          # mostly real detections, not interpolated gaps
+    reversal_window_sec: 3.0    # with-flow motion just before = ID switch, not wrong way
+  accident:
+    enabled: true
+    min_confidence: 0.6
+    merge_gap: 5.0
+    min_len: 1.0
+    v_min: 0.8
+    drop_ratio: 0.35
+    dv_min: 0.8
+    heading_jump_deg: 40.0
+    contact_iou: 0.05
+    still_speed: 0.15
+    still_sec: 3.0
+    confirm_window_sec: 8.0
+    person_window_sec: 20.0
+    person_radius_bl: 3.0
+    max_len_sec: 60.0
+  # ---------------- Tier 2 (need hand-drawn scene elements; disable themselves otherwise)
+  near_miss:
+    enabled: true
+    min_confidence: 0.7
+    merge_gap: 2.0
+    min_len: 0.5
+    ttc_thr: 1.0
+    brake_decel: 1.5
+    brake_k_sigma: 4.0          # evasive braking must also exceed 4 sigma of this video's accel noise
+    swerve_deg: 25.0
+    swerve_percentile: 99.5
+    max_dist_bl: 6.0
+    min_speed: 0.5
+    min_closing_bl: 1.0
+    min_hits: 2
+    min_size_frac: 0.035
+    min_track_sec: 1.5          # both tracks must be established, not a fresh or broken ID
+    max_plausible_speed_bl: 8.0 # faster than this around the conflict = tracking artefact
+    min_real_frac: 0.7
+    brake_drop_ratio: 0.6       # braking must cut the speed of the previous second by 40%
+    clear_ttc: 3.0
+    max_len_sec: 6.0
+  red_light:
+    enabled: true
+    min_confidence: 0.5
+    merge_gap: 1.0
+    min_len: 0.5
+    grace_sec: 0.5
+    clear_bl: 4.0
+  stop_line:
+    enabled: true
+    min_confidence: 0.5
+    merge_gap: 2.0
+    min_len: 2.0
+    stop_speed: 0.1
+    min_stop_sec: 2.0
+    max_past_bl: 3.0
+  failure_to_yield:
+    enabled: true
+    min_confidence: 0.6
+    merge_gap: 1.0
+    min_len: 0.3
+    min_speed: 0.3
+    edge_buffer_bl: 0.25
+    near_bl: 4.0
+  solid_line_crossing:
+    enabled: true
+    min_confidence: 0.5
+    merge_gap: 1.0
+    min_len: 0.3
+    hold_sec: 1.0
+  illegal_u_turn:
+    enabled: true
+    min_confidence: 0.6
+    merge_gap: 2.0
+    min_len: 1.0
+    illegal_everywhere: false
+    u_turn_deg: 150.0
+  illegal_turn:
+    enabled: true
+    min_confidence: 0.6
+    merge_gap: 2.0
+    min_len: 1.0
+  # ---------------- Tier 3
+  road_obstacle:
+    enabled: true
+    min_confidence: 0.6
+    merge_gap: 3.0
+    min_len: 3.0
+    animal_min_sec: 3.0
+    object_min_sec: 5.0
+    blob_enabled: false
+  fire_smoke:
+    enabled: false
+    min_confidence: 0.5
+    merge_gap: 3.0
+    min_len: 3.0
+
+risk:
+  stride: 3
+  stride_cpu: 6
+  detector_weights: null        # null = same weights as Part A
+  imgsz: 640                    # Part B ignores small far-field boxes anyway; keeps a step under 10 ms
+  weights_file: weights/risk.json
+  ema_alpha: 0.3
+  peak_hold_sec: 1.0
+  floor: 0.01
+  floor_density: 0.04
+  ttc_tau: 1.5
+  ttc_max: 2.0                  # f_ttc = exp(-TTC / ttc_tau) when TTC < ttc_max
+  horizon_sec: 3.0
+  pair_dist_bl: 6.0
+  min_closing_bl: 1.0           # ignore pairs not closing in at >= 1 BL/s
+  min_size_frac: 0.03           # ignore boxes smaller than 3% of frame height (noisy far field)
+  min_age_sec: 1.0
+  min_track_conf: 0.4           # running mean detection confidence of an online track
+  brake_ref: 2.0                # BL/s^2; raised to noise_k x running median decel if larger
+  swerve_ref_deg_s: 90.0
+  noise_k: 3.0
+  density_norm: 20
+  wrong_min_strength: 0.6
+  stop_decel: 1.0
+  road_min_obs: 5

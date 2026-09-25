@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight technical report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <h1>Technical report</h1>
+  <p class="lede">We built a detector-plus-rules system that runs fully offline, produces valid, deterministic output
+    for every video and stays at 0.7x to 1.0x real time for both parts on a laptop GPU. The weak point is signal-dependent
+    classes and near misses, which we gate conservatively rather than guess.</p>
+
+  <h2>What we built</h2>
+  <p>A YOLO11m detector and ByteTrack produce tracks; kinematics turn them into speeds normalised by vehicle size;
+    fourteen explicit rules turn tracks into segments; post-processing enforces the output contract. Part B runs its
+    own online copy of detector and tracker on every third frame and combines time-to-collision, braking, swerving,
+    wrong-way motion and pedestrian conflicts in a logistic score. The scene (lanes, stop lines, crosswalks, zones)
+    is drawn once in <code>scene.json</code>; where it is missing, the road surface, lane flow and busy crossing points are
+    learned from each video's own tracks.</p>
+
+  <h2>What worked</h2>
+  <ul>
+    <li><strong>Box-top velocity.</strong> Taking velocity from the top edge of each box instead of the bottom, and
+      ignoring boxes cut by the frame border, removed most false braking.</li>
+    <li><strong>Noise-relative thresholds.</strong> Scaling braking and swerving by each video's own noise made the
+      same rule work on a quiet highway and a dense city underpass.</li>
+    <li><strong>Learned lane flow.</strong> One vote per track per grid cell, with the track's own vote removed when it is
+      tested, gives wrong-way detection without drawing lanes.</li>
+    <li><strong>A conjunction feature for risk.</strong> Time to collision alone fires in every queue; multiplying it by
+      braking or swerving keeps alarms for evasive manoeuvres.</li>
+    <li><strong>Tests as the contract.</strong> Interface, format, non-overlap, determinism, causality, offline and one
+      scenario per rule run on every change: 46 tests.</li>
+  </ul>
+
+  <h2>Ablations</h2>
+  <p>Measured on two public traffic clips with no labelled events (a 4K highway clip and a 1080p city underpass),
+    so every event or alarm there is a false positive.</p>
+  <h3>Kinematic noise</h3>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Change</th><th>Measure</th><th class="num">Highway</th><th class="num">City</th></tr></thead>
+    <tbody>
+      <tr><td>Foot-point kinematics</td><td>Acceleration, 1-in-1000 low tail, BL/s&sup2;</td><td class="num">-4.08</td><td class="num">-18.1</td></tr>
+      <tr><td>+ track splitting, border rows, box-top velocity</td><td>same</td><td class="num">-1.59</td><td class="num">-10.3</td></tr>
+      <tr><td>Foot-point kinematics</td><td>Heading change in 1 s, 99.9th percentile</td><td class="num">158&deg;</td><td class="num">180&deg;</td></tr>
+      <tr><td>+ same fixes</td><td>same</td><td class="num">55&deg;</td><td class="num">180&deg;</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Detection coverage</h3>
+  <p>Detecting at 960 px instead of 640, feeding low-score boxes to ByteTrack and starting tracks at 0.3 instead of
+    0.6 took the city clip from 95 to 419 tracks, and from 4.5 to 23.8 tracked objects per processed frame. The new
+    tracks are mostly small and faint, so the rules only use the 308 tracks with mean confidence of at least 0.4 and
+    a median size of at least 2.5% of the frame height.</p>
+  <h3>False events and alarms</h3>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Change</th><th>Measure</th><th class="num">Highway</th><th class="num">City</th></tr></thead>
+    <tbody>
+      <tr><td>Near-miss rule with fixed thresholds (640 px)</td><td>False events</td><td class="num">0</td><td class="num">2</td></tr>
+      <tr><td>+ size filter, closing speed, noise-relative evasion</td><td>same</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>960 px detection, lower track thresholds</td><td>same</td><td class="num">0</td><td class="num">9</td></tr>
+      <tr><td>+ reliable tracks, ID-switch checks, displacement before a stop</td><td>same</td><td class="num">0</td><td class="num">1</td></tr>
+      <tr><td>+ wider border margin, braking must cut speed by 40%</td><td>same</td><td class="num">0</td><td class="num">0</td></tr>
+      <tr><td>Risk v0 (moving-average velocity)</td><td>Frames above the 0.5 alarm</td><td class="num">6.7%</td><td class="num">80.2%</td></tr>
+      <tr><td>+ least-squares velocity, reliability filters, noise floor</td><td>same</td><td class="num">0.0%</td><td class="num">5.6%</td></tr>
+      <tr><td>+ conjunction feature</td><td>same</td><td class="num">0.0%</td><td class="num">2.3%</td></tr>
+      <tr><td>Final detector, track-confidence filter, bias -5.0</td><td>same</td><td class="num">0.0%</td><td class="num">1.2% (one alarm)</td></tr>
+    </tbody>
+  </table></div>
+  <div id="tuning"></div>
+
+  <h2>Runtime</h2>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Clip</th><th class="num">Length</th><th class="num">Part A</th><th class="num">Part B</th><th class="num">Both / length</th></tr></thead>
+    <tbody id="timing"><tr><td colspan="5" class="muted">Loading.</td></tr></tbody>
+  </table></div>
+  <p class="muted">RTX 4050 laptop GPU (6 GB), YOLO11m FP16 at 960 px for events (stride 2) and 640 px for risk
+    (stride 3). Part B averages 5 to 9 ms per frame. The limit is 3x the video length.</p>
+
+  <h2>What did not work</h2>
+  <ul>
+    <li><strong>Per-frame braking from an exponential moving average.</strong> Differences of smoothed positions were
+      too noisy at 8 Hz; the brake feature sat at its maximum in 89% of city frames. Least-squares slopes over 0.8 s fixed it.</li>
+    <li><strong>Dense shallow-angle traffic is still hard.</strong> Heading noise stays high for mid-distance vehicles
+      in the city clip, near-miss candidates reach 0.63 against the 0.70 gate, and the risk score raises one false
+      alarm in 42 seconds of stop-and-go traffic. More margin needs a CCTV-tuned detector or labelled data to fit on.</li>
+    <li><strong>Fire and smoke.</strong> A colour-and-flicker heuristic fires on tail lights and signs; with no trained
+      detector that fits the budget, the class ships disabled.</li>
+  </ul>
+
+  <h2>Next steps</h2>
+  <ul>
+    <li>Label the organizer samples, draw <code>scene.json</code> for the camera and run <code>tools/tune.py</code> to set per-class thresholds and boundary offsets.</li>
+    <li>Fit the risk weights on labelled pre-accident windows with <code>tools/fit_risk.py</code>.</li>
+    <li>Fine-tune the detector on CCTV viewpoints (UA-DETRAC) if small or night vehicles are missed.</li>
+  </ul>
+</main>
+<footer id="site-footer"></footer>
+<script>
+RS.getJSON("media/index.json").then(async (rows) => {
+  const parts = await Promise.all(rows.map((r) => RS.getJSON(`media/${r.stem}.json`).catch(() => null)));
+  document.getElementById("timing").innerHTML = parts.filter(Boolean).map((p) => `<tr><td>${RS.esc(p.meta.video_id)} (${p.meta.width}x${p.meta.height})</td>
+    <td class="num">${p.meta.duration.toFixed(1)} s</td><td class="num">${p.timing.part_a_sec} s</td><td class="num">${p.timing.part_b_sec} s</td>
+    <td class="num">${p.timing.rtf.toFixed(2)}x</td></tr>`).join("");
+}).catch(() => { document.getElementById("timing").innerHTML = '<tr><td colspan="5" class="muted">Run make render to publish timings.</td></tr>'; });
+RS.getJSON("data/tuning.json").then((t) => {
+  const rows = Object.entries(t.classes);
+  if (!rows.length) return;
+  document.getElementById("tuning").innerHTML = `<h3>Threshold tuning on our dev labels</h3><div class="table-scroll"><table>
+    <thead><tr><th>Class</th><th class="num">F1 before</th><th class="num">F1 after</th><th class="num">Precision at tIoU 0.3</th><th>Shipped</th></tr></thead><tbody>
+    ${rows.map(([c, r]) => `<tr><td>${RS.esc(RS.pretty(c))}</td><td class="num">${r.f1_before.toFixed(3)}</td><td class="num">${r.f1_after.toFixed(3)}</td>
+      <td class="num">${r["precision@0.3"].toFixed(2)}</td><td>${r.enabled ? "yes" : "no"}</td></tr>`).join("")}</tbody></table></div>`;
+}).catch(() => {});
+</script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadSight</title>
+<meta name="description" content="RoadSight finds traffic events in fixed CCTV video and scores accident risk frame by frame, offline.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/site.css">
+<script src="js/site.js"></script>
+</head>
+<body>
+<header id="site-header"></header>
+<main class="wrap">
+  <div class="sign-wrap">
+    <a class="exit-tab" href="demo.html">Try the live demo</a>
+    <div class="sign">
+      <div class="sign-inner">
+        <div>
+          <h1>RoadSight</h1>
+          <p>Finds traffic events in fixed-camera CCTV video and scores accident risk frame by frame. Fully offline, on one GPU.</p>
+        </div>
+        <div class="dest" aria-hidden="true">
+          <svg viewBox="0 0 44 44"><path d="M22 40V10M22 4l-9 10h18z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>
+          <span>14 event types</span><span>Causal risk score</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="lede">Give RoadSight one road-camera MP4. It returns every event as <code>[start, end, label]</code>,
+    from stopped vehicles and congestion to wrong-way driving, jaywalking and collisions. It also emits a risk score
+    for every frame that uses only the frames seen so far.</p>
+
+  <h2>How a video flows through it</h2>
+  <div class="pipeline-scroll"><svg class="pipeline" viewBox="0 0 1100 250" role="img" aria-label="Pipeline: video, detector, tracker, kinematics, rule engine, post-processing, events; a causal copy feeds the risk score">
+    <path class="road" d="M40 70 H1060"/><path class="lane" d="M40 70 H1060"/>
+    <path class="road" d="M300 190 H1060"/><path class="lane" d="M300 190 H1060"/>
+    <path d="M300 70 V190" class="road"/>
+    <g class="node"><rect x="10" y="45" width="120" height="50" rx="6"/><text x="70" y="75" text-anchor="middle" font-weight="700">Video</text></g>
+    <g class="node learned"><rect x="160" y="45" width="140" height="50" rx="6"/><text x="230" y="68" text-anchor="middle" font-weight="700">Detector</text><text x="230" y="86" text-anchor="middle" font-size="13">YOLO11, FP16</text></g>
+    <g class="node"><rect x="330" y="45" width="130" height="50" rx="6"/><text x="395" y="68" text-anchor="middle" font-weight="700">Tracker</text><text x="395" y="86" text-anchor="middle" font-size="13">ByteTrack</text></g>
+    <g class="node"><rect x="490" y="45" width="140" height="50" rx="6"/><text x="560" y="68" text-anchor="middle" font-weight="700">Kinematics</text><text x="560" y="86" text-anchor="middle" font-size="13">speed, heading</text></g>
+    <g class="node"><rect x="660" y="45" width="140" height="50" rx="6"/><text x="730" y="68" text-anchor="middle" font-weight="700">Rule engine</text><text x="730" y="86" text-anchor="middle" font-size="13">14 detectors</text></g>
+    <g class="node"><rect x="830" y="45" width="120" height="50" rx="6"/><text x="890" y="68" text-anchor="middle" font-weight="700">Post-process</text><text x="890" y="86" text-anchor="middle" font-size="13">merge, clip</text></g>
+    <g class="node"><rect x="975" y="45" width="115" height="50" rx="6"/><text x="1032" y="75" text-anchor="middle" font-weight="700">Events</text></g>
+    <g class="node"><rect x="640" y="120" width="180" height="36" rx="6"/><text x="730" y="143" text-anchor="middle" font-size="13">Scene: lanes, lines, zones</text></g>
+    <g class="node"><rect x="330" y="165" width="170" height="50" rx="6"/><text x="415" y="188" text-anchor="middle" font-weight="700">Causal copy</text><text x="415" y="206" text-anchor="middle" font-size="13">past frames only</text></g>
+    <g class="node"><rect x="540" y="165" width="200" height="50" rx="6"/><text x="640" y="188" text-anchor="middle" font-weight="700">Risk features</text><text x="640" y="206" text-anchor="middle" font-size="13">time to collision, braking</text></g>
+    <g class="node"><rect x="780" y="165" width="150" height="50" rx="6"/><text x="855" y="188" text-anchor="middle" font-weight="700">Logistic + EMA</text></g>
+    <g class="node"><rect x="960" y="165" width="130" height="50" rx="6"/><text x="1025" y="193" text-anchor="middle" font-weight="700">Risk 0 to 1</text></g>
+  </svg></div>
+  <p class="muted">Green boxes are learned; everything else is explicit, tunable rules. <a href="approach.html">Read the approach</a>.</p>
+
+  <h2>What it measures on the sample videos</h2>
+  <div id="samples" class="table-scroll"><p class="muted ui">Loading sample results.</p></div>
+
+  <div class="cols" style="margin-top:2rem">
+    <div><h3>See it on real footage</h3><p>Annotated sample videos with boxes, track IDs, active events and the risk curve. <a href="results.html">Open the results</a>.</p></div>
+    <div><h3>Run your own clip</h3><p>Upload an MP4 of up to two minutes and get the event table, timeline and annotated playback. <a href="demo.html">Open the live demo</a>.</p></div>
+    <div><h3>What worked and what did not</h3><p>The one-page technical report, with measured runtimes and ablations. <a href="report.html">Read the report</a>.</p></div>
+  </div>
+</main>
+<footer id="site-footer"></footer>
+<script>
+  RS.getJSON("media/index.json").then((rows) => {
+    const el = document.getElementById("samples");
+    if (!rows.length) { el.innerHTML = '<p class="muted ui">No rendered samples yet.</p>'; return; }
+    el.innerHTML = `<table><thead><tr><th>Video</th><th class="num">Length</th><th class="num">Events</th><th class="num">Wall time / video length</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td><a href="results.html#${encodeURIComponent(r.stem)}">${RS.esc(r.video)}</a></td><td class="num">${r.duration.toFixed(1)} s</td>
+      <td class="num">${r.events}</td><td class="num">${r.rtf.toFixed(2)}x</td></tr>`).join("")}</tbody></table>
+      <p class="muted">Wall time covers both parts (events and per-frame risk) on an RTX 4050 laptop GPU; the limit is 3x.</p>`;
+  }).catch(() => { document.getElementById("samples").innerHTML = '<p class="muted ui">Sample results are not published yet.</p>'; });
+</script>
+</body>
+</html>
