@@ -40,6 +40,13 @@ class VideoMeta:
         }
 
 
+def stride_for(fps: float, target_hz: float | None, fallback: int) -> int:
+    """Frames to step so processing runs near ``target_hz`` whatever the video frame rate."""
+    if not target_hz or target_hz <= 0:
+        return max(1, int(fallback))
+    return max(1, int(round(sanitize_fps(fps) / float(target_hz))))
+
+
 def sanitize_fps(fps: float) -> float:
     return float(fps) if fps and 1.0 <= fps <= 240.0 else DEFAULT_FPS
 

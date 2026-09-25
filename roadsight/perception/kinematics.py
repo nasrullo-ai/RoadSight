@@ -106,7 +106,7 @@ def _ls_slope(t: np.ndarray, v: np.ndarray) -> float:
 
 
 class _OnlineState:
-    __slots__ = ("t", "x", "y", "vx", "vy", "hist", "pos", "cls", "box", "first_t", "n", "edge", "conf")
+    __slots__ = ("t", "x", "y", "vx", "vy", "hist", "pos", "cls", "box", "first_t", "n", "edge", "conf", "still_since", "queued")
 
     def __init__(self, t: float, x: float, y: float, cls: int, box: np.ndarray, maxlen: int) -> None:
         self.t = t
@@ -120,6 +120,8 @@ class _OnlineState:
         self.n = 1
         self.edge = False
         self.conf = 0.0  # running mean detection confidence
+        self.still_since: float | None = None  # time the track last became stationary
+        self.queued = False  # already counted as a waiting vehicle
         self.pos: deque = deque(maxlen=maxlen)  # (t, anchor_x, anchor_y, ground_y)
         self.hist: deque = deque(maxlen=maxlen)  # (t, speed, heading, vx, vy)
 

@@ -80,7 +80,9 @@ def main() -> int:
     (OUT / "Dockerfile").write_text(DOCKERFILE, encoding="utf-8")
     (OUT / "requirements-space.txt").write_text(REQUIREMENTS, encoding="utf-8")
     (OUT / "README.md").write_text(README, encoding="utf-8")
-    (OUT / ".gitattributes").write_text("*.mp4 filter=lfs diff=lfs merge=lfs -text\n*.pt filter=lfs diff=lfs merge=lfs -text\n", encoding="utf-8")
+    (OUT / ".gitattributes").write_text(
+        "*.mp4 filter=lfs diff=lfs merge=lfs -text\n*.pt filter=lfs diff=lfs merge=lfs -text\n", encoding="utf-8"
+    )
     size = sum(p.stat().st_size for p in OUT.rglob("*") if p.is_file()) / 1e6
     print(f"Space assembled in {OUT} ({size:.1f} MB)")
     return 0

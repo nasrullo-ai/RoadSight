@@ -44,7 +44,7 @@ class Accident(EventRule):
         still_sec = self.p("still_sec", 3.0)
         confirm_win = self.p("confirm_window_sec", 8.0)
         person_win = self.p("person_window_sec", 20.0)
-        person_bl = self.p("person_radius_bl", 3.0)
+        person_bl = self.p("person_radius_bl", 2.0)
         cap = self.p("max_len_sec", 60.0)
 
         users = tracks.of_kind("road_user", reliable=True)
@@ -80,28 +80,91 @@ class Accident(EventRule):
                     }
                 )
 
-        persons = tracks.of_kind("person")
+        persons = tracks.of_kind("person", reliable=True)
         p_first = persons.groupby("track_id", sort=True).first() if not persons.empty else None
+        min_closing = self.p("min_closing_bl", 1.0)
+        max_speed = self.p("max_plausible_speed_bl", 8.0)
+        react_dv = self.p("reaction_dv_bl", 0.6)
+        deflect_deg = self.p("deflection_deg", 30.0)
         out = []
         for c in sorted(cands, key=lambda c: c["tc"]):
             involved = [c["tid"]] + ([c["partner"]] if c["partner"] is not None else [])
             tc = c["tc"]
+            g0 = per_track[c["tid"]]
+            if not self._plausible(g0, tc, max_speed):
+                continue  # speed spikes or mostly interpolated: tracking artefact, not a crash
             stationary = any(self._still_after(per_track[k], tc, v_still, still_sec, confirm_win) for k in involved)
             people = False
             if p_first is not None:
                 r = person_bl * float(tracks.scale(c["y"]))
-                m = (p_first["t"] >= tc) & (p_first["t"] <= tc + person_win)
+                m = (p_first["t"] >= tc + 0.5) & (p_first["t"] <= tc + person_win)
                 m &= np.hypot(p_first["foot_x"] - c["x"], p_first["foot_y"] - c["y"]) < r
+                if self.scene.has_carriageway():
+                    m &= self.scene.in_carriageway(p_first["foot_x"].to_numpy(), p_first["foot_y"].to_numpy())
                 people = bool(m.any())
-            if c["partner"] is not None or c["fixed"]:
-                conf = 0.9 if (stationary and people) else 0.75 if stationary else 0.65 if people else 0.3
+            if c["partner"] is not None:
+                gp = per_track[c["partner"]]
+                if self._closing(g0, gp, tc, tracks.scale) < min_closing:
+                    continue  # stopping gently behind a queue is not a collision
+                vulnerable = int(gp["cls"].iloc[0]) in (0, 1, 3)
+                impact = vulnerable or self._reacts(gp, tc, react_dv, deflect_deg) or self._deflects(g0, tc, deflect_deg)
+                conf = (0.5 if impact else 0.1) + 0.25 * stationary + 0.2 * people
+            elif c["fixed"]:
+                conf = 0.35 + 0.25 * stationary + 0.2 * people
             else:
-                conf = 0.55 if (stationary and people) else 0.35 if stationary else 0.1
+                conf = 0.1 + 0.25 * stationary + 0.15 * people
             if c["kind"] == "turn" and not stationary:
                 conf = min(conf, 0.3)
             end = self._end_time(per_track, involved, tc, v_still, cap)
-            out.append(Segment(float(tc), float(max(end, tc + 1.0)), self.label, conf, {"tracks": involved, "kind": c["kind"]}))
+            out.append(
+                Segment(float(tc), float(max(end, tc + 1.0)), self.label, float(min(conf, 0.95)), {"tracks": involved, "kind": c["kind"]})
+            )
         return out
+
+    @staticmethod
+    def _plausible(g, tc, max_speed, min_real=0.6) -> bool:
+        w = g[(g["t"] >= tc - 2.0) & (g["t"] <= tc + 2.0)]
+        return len(w) > 0 and float(w["speed"].max()) <= max_speed and float((~w["interp"]).mean()) >= min_real
+
+    @staticmethod
+    def _closing(ga, gb, tc, scale) -> float:
+        """Mean approach speed (BL/s) of the pair over the second before contact."""
+        a = ga[(ga["t"] >= tc - 1.0) & (ga["t"] < tc)].set_index("frame")
+        b = gb[(gb["t"] >= tc - 1.0) & (gb["t"] < tc)].set_index("frame")
+        common = a.index.intersection(b.index)
+        if len(common) == 0:
+            return 0.0
+        a, b = a.loc[common], b.loc[common]
+        dx = (b["sx"] - a["sx"]).to_numpy()
+        dy = (b["sy"] - a["sy"]).to_numpy()
+        dist = np.maximum(np.hypot(dx, dy), 1e-6)
+        sa, sb = scale(a["sy"].to_numpy()), scale(b["sy"].to_numpy())
+        rvx = b["vx"].to_numpy() * sb - a["vx"].to_numpy() * sa
+        rvy = b["vy"].to_numpy() * sb - a["vy"].to_numpy() * sa
+        return float(np.mean(-(rvx * dx + rvy * dy) / dist / ((sa + sb) / 2)))
+
+    @staticmethod
+    def _reacts(g, tc, dv, deflect_deg) -> bool:
+        """The partner is jolted: its speed or heading changes abruptly around the contact."""
+        t = g["t"].to_numpy()
+        sp = g["speed"].to_numpy()
+        before = window_mean(t, sp, np.array([tc - 1.0]), np.array([tc - 0.1]))[0]
+        after = window_mean(t, sp, np.array([tc + 0.1]), np.array([tc + 1.0]))[0]
+        if np.isfinite(before) and np.isfinite(after) and abs(after - before) >= dv:
+            return True
+        return Accident._deflects(g, tc, deflect_deg)
+
+    @staticmethod
+    def _deflects(g, tc, deg) -> bool:
+        t = g["t"].to_numpy()
+        sp = g["speed"].to_numpy()
+        m_b = (t >= tc - 1.0) & (t < tc) & (sp > 0.5)
+        m_a = (t > tc) & (t <= tc + 1.0) & (sp > 0.5)
+        if m_b.sum() < 2 or m_a.sum() < 2:
+            return False
+        hb = np.degrees(np.arctan2(g["vy"].to_numpy()[m_b].mean(), g["vx"].to_numpy()[m_b].mean()))
+        ha = np.degrees(np.arctan2(g["vy"].to_numpy()[m_a].mean(), g["vx"].to_numpy()[m_a].mean()))
+        return bool(abs(angle_diff_deg(ha, hb)) >= deg)
 
     @staticmethod
     def _partner(tid, g, t_lo, t_hi, frame_t, t_to_frame, frame_rows, iou_thr):

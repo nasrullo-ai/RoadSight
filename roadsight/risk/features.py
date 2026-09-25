@@ -16,8 +16,12 @@ FEATURES = ("f_ttc", "f_brake", "f_swerve", "f_conflict", "f_wrong", "f_redrun",
 VEHICLES = (2, 3, 5, 7)
 
 
-def measure(active, t: float, scale, scene, red_lines: list, cfg: dict, height: int) -> dict[str, float]:
-    """``active``: list of (track_id, OnlineState). ``red_lines``: (stop line, approach side) pairs that are red now."""
+def measure(active, t: float, scale, scene, red_lines: list, cfg: dict, height: int, pair_hist: dict | None = None) -> dict[str, float]:
+    """``active``: list of (track_id, OnlineState). ``red_lines``: (stop line, approach side) pairs that are red now.
+
+    ``pair_hist`` (owned by the caller, causal) keeps each pair's recent distances so only pairs whose gap has
+    really been shrinking over the last second count for time to collision.
+    """
     raw = {"ttc": np.inf, "ped_ttc": np.inf, "decel": 0.0, "swerve": 0.0, "wrong": 0.0, "redrun": 0.0, "ped": 0.0, "n_veh": 0.0}
     if not active:
         return raw
@@ -32,6 +36,7 @@ def measure(active, t: float, scale, scene, red_lines: list, cfg: dict, height: 
     raw["n_veh"] = float(sum(1 for _, s in active if s.cls in VEHICLES and s.conf >= min_conf))
     if not keep:
         return raw
+    ids = np.array([k for k, _ in keep])
     cls = np.array([s.cls for _, s in keep])
     x = np.array([s.x for _, s in keep])
     y = np.array([s.y for _, s in keep])
@@ -47,13 +52,34 @@ def measure(active, t: float, scale, scene, red_lines: list, cfg: dict, height: 
     pairs = candidate_pairs(x, y, float(cfg.get("pair_dist_bl", 6.0)) * sc)
     if len(pairs):
         pairs = pairs[((sp[pairs[:, 0]] > 0.5) | (sp[pairs[:, 1]] > 0.5)) & (is_veh[pairs[:, 0]] | is_veh[pairs[:, 1]])]
+    auto = getattr(scene, "auto", None)
+    if len(pairs) and auto is not None and getattr(auto, "queue", None) is not None:
+        # A vehicle closing on a (nearly) standing one inside a learned queue zone is joining the queue.
+        in_q = auto.lookup(auto.queue, x, y)
+        slow = np.minimum(sp[pairs[:, 0]], sp[pairs[:, 1]]) < float(cfg.get("queue_leader_speed", 0.5))
+        pairs = pairs[~((in_q[pairs[:, 0]] | in_q[pairs[:, 1]]) & slow)]
     if len(pairs):
         i, j = pairs[:, 0], pairs[:, 1]
         dx, dy = x[j] - x[i], y[j] - y[i]
         dist = np.maximum(np.hypot(dx, dy), 1e-6)
         rvx, rvy = vx[j] * sc[j] - vx[i] * sc[i], vy[j] * sc[j] - vy[i] * sc[i]
         closing = -(rvx * dx + rvy * dy) / dist / ((sc[i] + sc[j]) / 2)
-        pairs = pairs[closing >= float(cfg.get("min_closing_bl", 1.0))]
+        ok = closing >= float(cfg.get("min_closing_bl", 1.0))
+        if pair_hist is not None:
+            gap_bl = dist / ((sc[i] + sc[j]) / 2)
+            window = float(cfg.get("closing_window_sec", 1.0))
+            for n, (a, b) in enumerate(zip(ids[i], ids[j])):
+                h = pair_hist.setdefault((int(min(a, b)), int(max(a, b))), [])
+                h.append((t, float(gap_bl[n])))
+                while h and h[0][0] < t - window:
+                    h.pop(0)
+                if len(h) >= 3:
+                    ht = np.array([q[0] for q in h])
+                    hd = np.array([q[1] for q in h])
+                    ok[n] &= -_ls_slope(ht, hd) >= float(cfg.get("min_closing_bl", 1.0))
+                else:
+                    ok[n] = False
+        pairs = pairs[ok]
     if len(pairs):
         vel = np.stack([vx * sc, vy * sc], 1)
         ttc, now = pair_ttc(boxes, vel, pairs, float(cfg.get("horizon_sec", 3.0)))

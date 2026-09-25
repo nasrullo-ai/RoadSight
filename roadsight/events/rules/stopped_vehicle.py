@@ -111,6 +111,13 @@ class StoppedVehicle(EventRule):
                 mid = (ep["start"] + ep["end"]) / 2
                 if signal.known() and signal.state_at(None, mid) != "green":
                     continue
+            auto = self.scene.auto
+            in_auto_queue = (
+                not self.scene.queue_zones
+                and auto is not None
+                and auto.queue is not None
+                and bool(auto.lookup(auto.queue, np.array([ep["x"]]), np.array([ep["y"]]))[0])
+            )
             during = (vt >= ep["start"]) & (vt <= ep["end"]) & ~np.isin(vtid, list(ep["tids"]))
             r = radius_bl * float(tracks.scale(ep["y"]))
             near = during & (np.hypot(vfx - ep["x"], vfy - ep["y"]) < r) & (vsp > moving)
@@ -126,8 +133,8 @@ class StoppedVehicle(EventRule):
                 passers = len(set(vtid[near].tolist()))
             others = during & (np.hypot(vfx - ep["x"], vfy - ep["y"]) < 3 * r)
             jam = others.sum() >= 10 and float(np.median(vsp[others])) < 0.3
-            if jam:
-                conf = 0.2
+            if jam or (in_auto_queue and dur < self.p("queue_max_sec", 120.0)):
+                conf = 0.2  # a jam, or a place where many vehicles wait (learned signal queue)
             elif passers >= 1:
                 conf = 0.9
             elif dur >= lone_min:

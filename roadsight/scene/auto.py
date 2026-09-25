@@ -119,11 +119,14 @@ class FlowField:
 
 
 class AutoScene:
-    def __init__(self, grid: Grid, road: np.ndarray, flow: FlowField, crosswalk: np.ndarray | None) -> None:
+    def __init__(
+        self, grid: Grid, road: np.ndarray, flow: FlowField, crosswalk: np.ndarray | None, queue: np.ndarray | None = None
+    ) -> None:
         self.grid = grid
         self.road = road
         self.flow = flow
         self.crosswalk = crosswalk
+        self.queue = queue  # cells where several different vehicles waited (signal queues)
         depth = cv2.distanceTransform(np.pad(road.astype(np.uint8), 1), cv2.DIST_L2, 3)[1:-1, 1:-1]
         self.road_depth = depth * grid.cell
 
@@ -161,6 +164,18 @@ class AutoScene:
             road = ndimage.binary_dilation(road, structure=st, iterations=int(cfg.get("road_dilate", 1)))
             road = ndimage.binary_fill_holes(road)
 
+        # Cells where several different vehicles stood still for a while: stop lines and signal queues.
+        stop_counts = np.zeros((grid.gh, grid.gw))
+        min_wait = float(cfg.get("queue_wait_sec", 3.0))
+        for _, g in veh.groupby("track_id", sort=True):
+            still = g[g["speed"] < 0.15]
+            if len(still) < 2 or still["t"].max() - still["t"].min() < min_wait:
+                continue
+            iy, ix = grid.index(still["foot_x"].median(), still["foot_y"].median())
+            stop_counts[iy, ix] += 1
+        queue = stop_counts >= float(cfg.get("queue_min_tracks", 3))
+        queue = ndimage.binary_dilation(queue, structure=np.ones((3, 3), dtype=bool), iterations=2) if queue.any() else None
+
         crosswalk = None
         if cfg.get("auto_crosswalks", True):
             ped = df[(df["cls"] == PERSON_CLASS) & (~df["rider"].astype(bool)) & (df["speed"] > 0.2)]
@@ -172,7 +187,7 @@ class AutoScene:
             if cw.any():
                 cw = ndimage.binary_dilation(cw, structure=np.ones((3, 3), dtype=bool), iterations=1)
                 crosswalk = cw
-        return cls(grid, road, flow, crosswalk)
+        return cls(grid, road, flow, crosswalk, queue)
 
     @classmethod
     def empty(cls, width: int, height: int, cfg: dict) -> AutoScene:

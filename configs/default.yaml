@@ -6,12 +6,14 @@ overrides_file: configs/tuned.yaml   # written by tools/tune.py; merged on top o
 device: auto            # auto | cuda | cpu
 
 video:
-  stride: 2             # process every 2nd frame on GPU (25 fps -> 12.5 Hz)
+  target_hz: 12.5       # frames processed per second of video (25 fps -> every 2nd, 50 fps -> every 4th)
+  target_hz_cpu: 5.0
+  stride: 2             # fallback when target_hz is null
   stride_cpu: 5
   adaptive: true        # raise stride only when Part A alone runs slower than real time
   adaptive_trigger_rtf: 1.0
   adaptive_goal_rtf: 0.6
-  max_stride: 4
+  max_stride: 4         # at 25 fps; scaled with the frame rate
   probe_frames: 200
   thumb_interval_sec: 1.0
   thumb_width: 160
@@ -59,6 +61,8 @@ scene:
   auto_crosswalks: true
   crosswalk_min_persons: 4
   online_flow_min_support: 30
+  queue_wait_sec: 3.0          # a cell where >= queue_min_tracks different vehicles waited is a learned queue
+  queue_min_tracks: 3
 
 signal:
   smooth_sec: 1.0
@@ -83,6 +87,7 @@ events:
     pass_radius_bl: 4.0
     link_gap_sec: 5.0
     link_iou: 0.6
+    queue_max_sec: 120.0        # in a learned signal queue only stops longer than this count
   congestion:
     enabled: true
     min_confidence: 0.5
@@ -132,12 +137,16 @@ events:
     still_sec: 3.0
     confirm_window_sec: 8.0
     person_window_sec: 20.0
-    person_radius_bl: 3.0
+    person_radius_bl: 2.0       # people appearing on the road next to the vehicles after contact
     max_len_sec: 60.0
+    min_closing_bl: 1.0         # the pair must approach each other just before contact
+    max_plausible_speed_bl: 8.0
+    reaction_dv_bl: 0.6         # partner speed jolt at contact that counts as an impact
+    deflection_deg: 30.0        # heading change at contact that counts as an impact
   # ---------------- Tier 2 (need hand-drawn scene elements; disable themselves otherwise)
   near_miss:
     enabled: true
-    min_confidence: 0.7
+    min_confidence: 0.75        # normal stop-and-go traffic reached 0.69 in our stress test
     merge_gap: 2.0
     min_len: 0.5
     ttc_thr: 1.0
@@ -213,7 +222,9 @@ events:
     min_len: 3.0
 
 risk:
-  stride: 3
+  target_hz: 8.33               # detector runs ~8 times per second of video (25 fps -> every 3rd frame)
+  target_hz_cpu: 4.0
+  stride: 3                     # fallback when target_hz is null
   stride_cpu: 6
   detector_weights: null        # null = same weights as Part A
   imgsz: 640                    # Part B ignores small far-field boxes anyway; keeps a step under 10 ms
@@ -226,7 +237,9 @@ risk:
   ttc_max: 2.0                  # f_ttc = exp(-TTC / ttc_tau) when TTC < ttc_max
   horizon_sec: 3.0
   pair_dist_bl: 6.0
-  min_closing_bl: 1.0           # ignore pairs not closing in at >= 1 BL/s
+  min_closing_bl: 1.0           # ignore pairs not closing in at >= 1 BL/s ...
+  closing_window_sec: 1.0       # ... both now and as the gap trend over the last second
+  conflict_memory_sec: 1.5      # braking counts as evasive if TTC was low within this window
   min_size_frac: 0.03           # ignore boxes smaller than 3% of frame height (noisy far field)
   min_age_sec: 1.0
   min_track_conf: 0.4           # running mean detection confidence of an online track
@@ -237,3 +250,6 @@ risk:
   wrong_min_strength: 0.6
   stop_decel: 1.0
   road_min_obs: 5
+  queue_wait_sec: 3.0           # online queue learning: a vehicle waiting this long votes for its cell
+  queue_min_tracks: 3
+  queue_leader_speed: 0.5       # pairs with a standing vehicle in a queue cell do not count for TTC

@@ -1,11 +1,11 @@
 {
   "bias": -5.0,
-  "f_ttc": 2.0,
-  "f_brake": 1.0,
-  "f_swerve": 1.0,
-  "f_conflict": 3.0,
+  "f_ttc": 7.0,
+  "f_brake": 0.0,
+  "f_swerve": 0.0,
+  "f_conflict": 2.0,
   "f_wrong": 2.5,
   "f_redrun": 2.0,
   "f_ped": 2.0,
-  "f_density": 0.5
+  "f_density": -2.0
 }

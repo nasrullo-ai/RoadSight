@@ -10,8 +10,10 @@ import json
 from collections import deque
 
 import numpy as np
+from scipy import ndimage
 
 from roadsight.config import load_config, resolve_path
+from roadsight.io.video import stride_for
 from roadsight.perception.detector import Detector, select_device
 from roadsight.perception.kinematics import VEHICLE_CLASSES, OnlineKinematics, RowScale
 from roadsight.perception.signal import RED, UNKNOWN, classify_roi
@@ -22,16 +24,18 @@ from roadsight.scene.geometry import side_of_polyline
 from roadsight.scene.scene import Scene
 from roadsight.utils.seed import seed_everything
 
+# Hand-set, then chosen on logged features: alarms on synthetic last-moment conflicts, silent on normal
+# dense traffic. Dense slow traffic makes short gaps normal, hence the negative density weight.
 DEFAULT_WEIGHTS = {
     "bias": -5.0,
-    "f_ttc": 2.0,
-    "f_brake": 1.0,
-    "f_swerve": 1.0,
-    "f_conflict": 3.0,
+    "f_ttc": 7.0,
+    "f_brake": 0.0,
+    "f_swerve": 0.0,
+    "f_conflict": 2.0,
     "f_wrong": 2.5,
     "f_redrun": 2.0,
     "f_ped": 2.0,
-    "f_density": 0.5,
+    "f_density": -2.0,
 }
 
 
@@ -75,11 +79,13 @@ class CausalRiskModel:
         w, h = int(meta.get("width", 1920) or 1920), int(meta.get("height", 1080) or 1080)
         self.fps = float(meta.get("fps", 25.0) or 25.0)
         on_cpu = self.device == "cpu"
-        self.stride = max(1, int(self.rcfg.get("stride_cpu", 6) if on_cpu else self.rcfg.get("stride", 3)))
+        target_hz = self.rcfg.get("target_hz_cpu", 4.0) if on_cpu else self.rcfg.get("target_hz", 8.33)
+        self.stride = stride_for(self.fps, target_hz, self.rcfg.get("stride_cpu", 6) if on_cpu else self.rcfg.get("stride", 3))
         self.tracker = Tracker(self.cfg.get("tracker", {}))
         self.kin = OnlineKinematics(rate_hz=self.fps / self.stride, width=w, height=h)
         self.height = h
         self._noise = {"decel": deque(maxlen=600), "swerve": deque(maxlen=600)}
+        self._ttc_hist: deque = deque()  # (t, f_ttc) over the last conflict_memory_sec
         self.scale = RowScale.default(h)
         self._scale_y: deque = deque(maxlen=4000)
         self._scale_s: deque = deque(maxlen=4000)
@@ -87,6 +93,8 @@ class CausalRiskModel:
         self.auto = AutoScene.empty(w, h, self.cfg.get("scene", {}))
         self.scene.auto = self.auto
         self._road_counts = np.zeros_like(self.auto.road, dtype=np.float64)
+        self._stop_counts = np.zeros_like(self.auto.road, dtype=np.float64)
+        self._pair_hist: dict = {}
         self._sig_hist = {r.id: deque(maxlen=max(1, int(self.fps / self.stride))) for r in self.scene.signal_rois}
         self._line_sides: dict[str, float] = {}
         self.n = 0
@@ -103,21 +111,26 @@ class CausalRiskModel:
         if k % self.stride != 0:
             return self.last_score
         det = self._detector([frame])[0]
-        tracks = self.tracker.update(det)
+        return self.process_tracks(self.tracker.update(det), t_sec, frame)
+
+    def process_tracks(self, tracks: np.ndarray, t_sec: float, frame: np.ndarray | None = None) -> float:
+        """Update the causal state with one processed frame's tracks (M, 7) and return the new score."""
         self._update_scale(tracks)
         self.kin.update(t_sec, tracks, self.scale)
         self._update_scene(t_sec)
-        red_lines = self._red_lines(frame)
+        red_lines = self._red_lines(frame) if frame is not None else []
         active = self.kin.active(t_sec)
-        raw = measure(active, t_sec, self.scale, self.scene, red_lines, self.rcfg, self.height)
-        feats = self._normalise(raw)
+        raw = measure(active, t_sec, self.scale, self.scene, red_lines, self.rcfg, self.height, self._pair_hist)
+        if self.n_processed % 50 == 0:  # forget pairs not seen for a while
+            self._pair_hist = {k: v for k, v in self._pair_hist.items() if v and v[-1][0] >= t_sec - 3.0}
+        feats = self._normalise(raw, t_sec)
         self.last_raw = raw
         self.last_features = feats
         self.n_processed += 1
         self.last_score = self._combine(feats, t_sec)
         return self.last_score
 
-    def _normalise(self, raw: dict[str, float]) -> dict[str, float]:
+    def _normalise(self, raw: dict[str, float], t: float) -> dict[str, float]:
         """Raw measurements -> 0..1 features. Braking and swerving are scaled by the larger of a fixed
         reference and ``noise_k`` x the running median of recent values (causal noise floor)."""
         k = float(self.rcfg.get("noise_k", 3.0))
@@ -129,7 +142,12 @@ class CausalRiskModel:
             hist.append(raw[key])
             floor = k * float(np.median(hist)) if len(hist) >= 20 else 0.0
             f[name] = float(np.clip(raw[key] / max(float(self.rcfg.get(ref, 1.0)), floor, 1e-6), 0.0, 1.0))
-        f["f_conflict"] = f["f_ttc"] * max(f["f_brake"], f["f_swerve"])  # closing in AND evading
+        # Closing in AND evading. Causal braking lags ~0.5 s, so pair the braking with the worst TTC of the
+        # last conflict_memory_sec rather than the TTC of this very frame.
+        self._ttc_hist.append((t, f["f_ttc"]))
+        while self._ttc_hist and self._ttc_hist[0][0] < t - float(self.rcfg.get("conflict_memory_sec", 1.5)):
+            self._ttc_hist.popleft()
+        f["f_conflict"] = max(v for _, v in self._ttc_hist) * max(f["f_brake"], f["f_swerve"])
         f["f_wrong"] = raw["wrong"]
         f["f_redrun"] = raw["redrun"]
         f["f_ped"] = raw["ped"]
@@ -168,6 +186,14 @@ class CausalRiskModel:
             iy, ix = self.auto.grid.index(st.x, st.y)
             self._road_counts[iy, ix] += 1
             sp = np.hypot(st.vx, st.vy)
+            # Learn queue cells causally: each vehicle that waits >= queue_wait_sec votes once.
+            if sp < 0.15 and st.n >= 3:
+                st.still_since = t if st.still_since is None else st.still_since
+                if not st.queued and t - st.still_since >= float(self.rcfg.get("queue_wait_sec", 3.0)):
+                    self._stop_counts[iy, ix] += 1
+                    st.queued = True
+            else:
+                st.still_since = None
             if sp > 0.5 and st.n >= 3:
                 xs.append(st.x)
                 ys.append(st.y)
@@ -177,6 +203,8 @@ class CausalRiskModel:
             self.auto.flow.add_samples(np.array(xs), np.array(ys), np.array(ux), np.array(uy))
         if self.n_processed % 25 == 0:
             self.auto.road = self._road_counts >= float(self.rcfg.get("road_min_obs", 5))
+            queue = self._stop_counts >= float(self.rcfg.get("queue_min_tracks", 3))
+            self.auto.queue = ndimage.binary_dilation(queue, np.ones((3, 3), dtype=bool), iterations=2) if queue.any() else None
 
     def _red_lines(self, frame: np.ndarray) -> list:
         if not self.scene.stop_lines or not self.scene.signal_rois:

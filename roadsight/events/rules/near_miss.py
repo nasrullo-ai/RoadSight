@@ -115,6 +115,8 @@ class NearMiss(EventRule):
                 ]
                 if not ev:
                     continue
+                if self._queue_join(ga, gb, t0):
+                    continue  # braking behind a waiting queue where vehicles always stop: normal traffic
                 start = min(x[0] for x in ev)
                 severity = max(x[1] for x in ev)
                 end = self._clear_time(ga, gb, times[idx[-1]], clear_ttc, horizon, tracks)
@@ -141,6 +143,31 @@ class NearMiss(EventRule):
         j = np.clip(np.searchsorted(t, t - 1.0), 0, len(t) - 1)
         d = np.abs(angle_diff_deg(h, h[j]))
         return np.where((sp > min_speed) & (sp[j] > min_speed) & (t - t[j] >= 0.5), d, 0.0)
+
+    def _queue_join(self, ga, gb, t0) -> bool:
+        """A vehicle in a learned queue zone and the slower one (nearly) standing: joining a queue."""
+        auto = self.scene.auto
+        if self.scene.queue_zones:
+            from roadsight.scene.geometry import points_in_any
+
+            def in_queue(x, y):
+                return bool(points_in_any(np.array([x]), np.array([y]), self.scene.queue_zones)[0])
+
+        elif auto is not None and auto.queue is not None:
+
+            def in_queue(x, y):
+                return bool(auto.lookup(auto.queue, np.array([x]), np.array([y]))[0])
+
+        else:
+            return False
+        rows = []
+        for g in (ga, gb):
+            w = g[(g["t"] >= t0 - 0.5) & (g["t"] <= t0 + 0.5)]
+            if w.empty:
+                return False
+            rows.append((float(w["sx"].median()), float(w["sy"].median()), float(w["speed"].median())))
+        any_in = any(in_queue(x, y) for x, y, _ in rows)
+        return any_in and min(sp for _, _, sp in rows) < self.p("queue_leader_speed", 0.5)
 
     @staticmethod
     def _plausible(g, t0, max_speed, min_real) -> bool:

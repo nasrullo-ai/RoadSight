@@ -18,7 +18,7 @@ from roadsight.config import load_config
 from roadsight.events import rules as _rules  # noqa: F401  (registers every rule)
 from roadsight.events.base import RULES, Segment
 from roadsight.events.postprocess import postprocess
-from roadsight.io.video import FrameReader, VideoMeta
+from roadsight.io.video import FrameReader, VideoMeta, stride_for
 from roadsight.perception.detector import Detector, select_device
 from roadsight.perception.signal import SignalTimeline, classify_roi
 from roadsight.perception.tracker import Tracker
@@ -73,11 +73,13 @@ class EventPipeline:
         timer = StageTimer()
         vcfg = cfg.get("video", {})
         on_cpu = self.device == "cpu"
-        stride = int(vcfg.get("stride_cpu", 5) if on_cpu else vcfg.get("stride", 2))
         detector = self.detector
 
-        reader = FrameReader(video_path, stride)
+        reader = FrameReader(video_path, 1)
         meta = reader.meta
+        target_hz = vcfg.get("target_hz_cpu", 5.0) if on_cpu else vcfg.get("target_hz", 12.5)
+        stride = stride_for(meta.fps, target_hz, vcfg.get("stride_cpu", 5) if on_cpu else vcfg.get("stride", 2))
+        reader.stride = stride
         scene = Scene.load(cfg.get("scene", {}).get("path"), meta.width, meta.height)
         tracker = Tracker(cfg.get("tracker", {}))
 
@@ -109,7 +111,7 @@ class EventPipeline:
             adaptive = bool(vcfg.get("adaptive", True))
             trigger_rtf = float(vcfg.get("adaptive_trigger_rtf", 1.0))
             goal_rtf = float(vcfg.get("adaptive_goal_rtf", 0.6))
-            max_stride = int(vcfg.get("max_stride", 4))
+            max_stride = max(stride, int(round(int(vcfg.get("max_stride", 4)) * meta.fps / 25.0)))
             probe_frames = int(vcfg.get("probe_frames", 200))
             t_start = time.perf_counter()
             n_total = max(1, meta.n_frames)
