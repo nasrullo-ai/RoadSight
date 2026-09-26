@@ -35,14 +35,17 @@ docker run --gpus all --network none -v $PWD/data/samples:/videos -v $PWD/output
 Tested on Windows 11, Python 3.12, NVIDIA RTX 4050 Laptop GPU (6 GB), 16 CPU threads. Dependencies are
 pinned to versions that also ship wheels for Python 3.10; the Docker image uses Python 3.10 with CUDA 12.1.
 
-| Clip | Resolution | Length | Part A (events) | Part B (risk) | Total / length |
+| Clip | Format | Length | Part A (events) | Part B (risk) | Total / length |
 | --- | --- | ---: | ---: | ---: | ---: |
-| vehicles-2.mp4 (city underpass) | 1920x1080 | 42.5 s | 18.2 s | 12.0 s | 0.71x |
-| vehicles.mp4 (highway) | 3840x2160 | 21.5 s | 9.1 s | 11.8 s | 0.97x |
+| C3896.MP4 (organizer, noon) | 4K 29.97 fps XAVC H.264 4:2:2 10-bit | 340.3 s | 114.8 s | 406.7 s | 1.53x |
+| C3897.MP4 (organizer, noon) | same | 317.8 s | 105.2 s | 379.6 s | 1.53x |
+| C3902.MP4 (organizer, dusk) | same | 317.8 s | 108.4 s | 390.6 s | 1.57x |
+| C3905.MP4 (organizer, dusk) | same | 127.6 s | 44.8 s | 143.7 s | 1.48x |
 
-The limit is 3x the video length. Part A detects every 2nd frame at 960 px (YOLO11m, FP16, batch 16);
-Part B detects every 3rd frame at 640 px and averages 5 to 9 ms per `step` call. The stride rises
-automatically only if Part A alone runs slower than real time. Per-stage times are logged to stderr.
+The limit is 3x the video length. Part A decodes with ffmpeg (skipping B-frames), detects ~10-12.5 frames
+per second at 960 px (YOLO11m, FP16, batch 16) and costs ~0.35x. Part B is dominated by the harness's own
+OpenCV decode of every 4K 10-bit frame (~32 fps on this machine); our own work there is ~20 ms per
+processed frame at ~7.5 Hz. Per-stage times are logged to stderr.
 
 ## How it works
 
