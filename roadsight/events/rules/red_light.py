@@ -1,12 +1,17 @@
-"""red_light: a vehicle front crosses a stop line while its signal is red (after a grace period)."""
+"""red_light: a vehicle drives across its stop line while the signal is red (after a grace period).
+
+The crossing must be a real run through the line: the front is clearly before the line
+(``before_bl``), then clearly past it (``after_bl``) within a few seconds while moving. A vehicle
+waiting with its bumper on the line, whose position jitters by a few pixels, never qualifies.
+"""
 
 from __future__ import annotations
 
 import numpy as np
 
 from roadsight.events.base import EventRule, Segment, register
-from roadsight.events.rules._stopline import approach_side, crossing_index
-from roadsight.scene.geometry import angle_diff_deg, side_of_polyline
+from roadsight.events.rules._stopline import approach_side, signed_distance_bl, within_line_span
+from roadsight.scene.geometry import angle_diff_deg
 
 
 @register
@@ -18,6 +23,11 @@ class RedLight(EventRule):
             return []
         grace = self.p("grace_sec", 0.5)
         clear_bl = self.p("clear_bl", 4.0)
+        before_bl = self.p("before_bl", 0.3)
+        after_bl = self.p("after_bl", 1.0)
+        window = self.p("cross_window_sec", 3.0)
+        min_speed = self.p("min_speed", 0.5)
+        max_len = self.p("max_len_sec", 8.0)
         rtor_deg = self.p("right_turn_deg", 60.0)
         veh = tracks.of_kind("vehicle", reliable=True)
         groups = [g for _, g in veh.groupby("track_id", sort=True)]
@@ -25,10 +35,13 @@ class RedLight(EventRule):
         for line in self.scene.stop_lines:
             side_from = approach_side(line, groups, tracks.scale)
             for g in groups:
-                k = crossing_index(g, line, side_from, tracks.scale)
+                t = g["t"].to_numpy()
+                d = signed_distance_bl(g, line, side_from, tracks.scale)
+                span = within_line_span(g, line, 0.5, tracks.scale)
+                sp = g["speed"].to_numpy()
+                k = self._crossing(t, d, span, sp, before_bl, after_bl, window, min_speed)
                 if k is None:
                     continue
-                t = g["t"].to_numpy()
                 tc = float(t[k])
                 if signal.state_at(line.signal, tc) != "red":
                     continue
@@ -37,9 +50,22 @@ class RedLight(EventRule):
                     continue
                 if self.scene.right_turn_on_red and self._turns_right(g, k, rtor_deg):
                     continue
-                end = self._end(g, k, line, side_from, clear_bl, tracks.scale)
-                out.append(Segment(tc, end, self.label, 0.8, {"tracks": [int(g["track_id"].iloc[0])], "line": line.id}))
+                past = np.flatnonzero((t > tc) & (d >= clear_bl))
+                end = float(t[past[0]]) if len(past) else float(t[-1])
+                out.append(Segment(tc, min(end, tc + max_len), self.label, 0.8, {"tracks": [int(g["track_id"].iloc[0])], "line": line.id}))
         return out
+
+    @staticmethod
+    def _crossing(t, d, span, sp, before_bl, after_bl, window, min_speed) -> int | None:
+        """Index where the front passes the line during a clean run from before to well past it."""
+        for k in np.flatnonzero((d[1:] >= 0) & (d[:-1] < 0)) + 1:
+            if not span[k] or sp[k] < min_speed:
+                continue
+            was_before = (t >= t[k] - window) & (t < t[k]) & (d <= -before_bl)
+            gets_past = (t > t[k]) & (t <= t[k] + window) & (d >= after_bl)
+            if was_before.any() and gets_past.any():
+                return int(k)
+        return None
 
     @staticmethod
     def _turns_right(g, k, deg) -> bool:
@@ -49,18 +75,5 @@ class RedLight(EventRule):
         m = (t >= t[k]) & (t <= t[k] + 5.0) & (sp > 0.5)
         if m.sum() < 2:
             return False
-        d = np.cumsum(angle_diff_deg(np.diff(h[m]), 0))
-        return bool(d.max(initial=0) > deg)  # clockwise on screen (y down) == right turn
-
-    def _end(self, g, k, line, side_from, clear_bl, scale) -> float:
-        t = g["t"].to_numpy()
-        x = g["sx"].to_numpy()
-        y = g["sy"].to_numpy()
-        for i in range(k, len(t)):
-            if self.scene.exit_zones and self.scene.zone_of(x[i], y[i], self.scene.exit_zones):
-                return float(t[i])
-            d = np.min(np.hypot(line.points[:, 0] - x[i], line.points[:, 1] - y[i]))
-            past = side_of_polyline(x[i : i + 1], y[i : i + 1], line.points)[0] != side_from
-            if past and d > clear_bl * float(scale(y[i])):
-                return float(t[i])
-        return float(t[-1])
+        dh = np.cumsum(angle_diff_deg(h[m][1:], h[m][:-1]))
+        return bool(dh.max(initial=0) > deg)  # clockwise on screen (y down) == right turn

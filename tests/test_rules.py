@@ -116,10 +116,17 @@ def test_solid_line_crossing():
 
 def test_failure_to_yield():
     cw = [np.array([[590, 250], [690, 250], [690, 600], [590, 600]], float)]
-    person = lambda t: (640.0, 380.0, 30.0, 80.0)  # noqa: E731
-    a = car(piecewise([(0, 100, 440), (8, 1200, 440)]))
+    person = lambda t: (640.0, 300.0 + 25.0 * t, 30.0, 80.0)  # noqa: E731  walking across the zebra
+    a = car(piecewise([(0, 100, 440), (8, 1200, 440)]))  # reaches the zebra as the walker is in its lane
     segs = run("failure_to_yield", make_tracks([(1, 2, a, 0, 8), (2, 0, person, 0, 8)], 10), road_scene(crosswalks=cw), duration=10)
     assert len(segs) == 1
+
+
+def test_waiting_pedestrian_is_not_failure_to_yield():
+    cw = [np.array([[590, 250], [690, 250], [690, 600], [590, 600]], float)]
+    person = lambda t: (640.0, 380.0, 30.0, 80.0)  # noqa: E731  standing still
+    a = car(piecewise([(0, 100, 440), (8, 1200, 440)]))
+    assert run("failure_to_yield", make_tracks([(1, 2, a, 0, 8), (2, 0, person, 0, 8)], 10), road_scene(crosswalks=cw), duration=10) == []
 
 
 def test_road_obstacle_animal():

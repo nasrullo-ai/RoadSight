@@ -18,18 +18,19 @@ from roadsight.config import load_config
 from roadsight.events import rules as _rules  # noqa: F401  (registers every rule)
 from roadsight.events.base import RULES, Segment
 from roadsight.events.postprocess import postprocess
-from roadsight.io.video import FrameReader, VideoMeta, stride_for
+from roadsight.io.video import FFmpegReader, FrameReader, VideoMeta, probe, stride_for
 from roadsight.perception.detector import Detector, select_device
 from roadsight.perception.signal import SignalTimeline, classify_roi
 from roadsight.perception.tracker import Tracker
 from roadsight.perception.tracktable import TrackTable
 from roadsight.scene.auto import AutoScene
-from roadsight.scene.scene import Scene
+from roadsight.scene.scene import Scene, first_frame, load_aligned
 from roadsight.utils.log import get_logger
 from roadsight.utils.seed import seed_everything
 from roadsight.utils.timing import StageTimer
 
 log = get_logger("roadsight.pipeline")
+CACHE_VERSION = 3  # bump when perception outputs change (reader, signal sampling)
 
 Progress = Callable[[float, str], None]
 
@@ -44,6 +45,7 @@ class PipelineResult:
     meta: VideoMeta
     timing: dict = field(default_factory=dict)
     stride: int = 1
+    align: dict = field(default_factory=dict)
 
 
 class EventPipeline:
@@ -75,12 +77,18 @@ class EventPipeline:
         on_cpu = self.device == "cpu"
         detector = self.detector
 
-        reader = FrameReader(video_path, 1)
-        meta = reader.meta
         target_hz = vcfg.get("target_hz_cpu", 5.0) if on_cpu else vcfg.get("target_hz", 12.5)
+        meta0 = probe(video_path)
+        scene_path = cfg.get("scene", {}).get("path")
+        frame0 = first_frame(video_path) if Scene.reference_image(scene_path) is not None else None
+        scene, align_info = load_aligned(
+            scene_path, frame0, meta0.width, meta0.height, int(cfg.get("scene", {}).get("align_min_inliers", 40))
+        )
+        # Signal heads are classified on full-resolution crops delivered with each downscaled frame.
+        reader = self._reader(video_path, vcfg, target_hz, [r.rect for r in scene.signal_rois])
+        meta = reader.meta
         stride = stride_for(meta.fps, target_hz, vcfg.get("stride_cpu", 5) if on_cpu else vcfg.get("stride", 2))
         reader.stride = stride
-        scene = Scene.load(cfg.get("scene", {}).get("path"), meta.width, meta.height)
         tracker = Tracker(cfg.get("tracker", {}))
 
         ev_cfg = cfg.get("events", {})
@@ -115,12 +123,17 @@ class EventPipeline:
             probe_frames = int(vcfg.get("probe_frames", 200))
             t_start = time.perf_counter()
             n_total = max(1, meta.n_frames)
+            sx, sy = getattr(reader, "scale", (1.0, 1.0))
 
             def flush() -> None:
                 if not batch_frames:
                     return
                 with timer.stage("detect"):
                     dets = detector(batch_frames)
+                    if sx != 1.0 or sy != 1.0:  # frames were downscaled by the reader: back to original pixels
+                        for d in dets:
+                            d[:, [0, 2]] *= sx
+                            d[:, [1, 3]] *= sy
                 with timer.stage("track"):
                     for (fidx, ft), d in zip(batch_info, dets):
                         tr = tracker.update(d)
@@ -140,8 +153,14 @@ class EventPipeline:
 
             with timer.stage("decode+loop"):
                 for fidx, ft, frame in reader:
-                    for roi in scene.signal_rois:
-                        sig_samples[roi.id].append((ft, classify_roi(frame, roi.rect)))
+                    crops = getattr(reader, "last_crops", None)
+                    for j, roi in enumerate(scene.signal_rois):
+                        if crops is not None and j < len(crops):
+                            state = classify_roi(crops[j], (0, 0, crops[j].shape[1], crops[j].shape[0]))
+                        else:
+                            x1, y1, x2, y2 = roi.rect
+                            state = classify_roi(frame, (int(x1 / sx), int(y1 / sy), int(x2 / sx), int(y2 / sy)))
+                        sig_samples[roi.id].append((ft, state))
                     if (want_bg or want_color) and ft >= next_thumb:
                         h = int(round(frame.shape[0] * thumb_w / frame.shape[1]))
                         small = cv2.resize(frame, (thumb_w, h), interpolation=cv2.INTER_AREA)
@@ -156,7 +175,7 @@ class EventPipeline:
                         flush()
                         if progress:
                             progress(min(0.95, fidx / n_total), "detecting")
-                    if adaptive and fidx >= probe_frames and fidx < probe_frames + reader.stride:
+                    if adaptive and isinstance(reader, FrameReader) and probe_frames <= fidx < probe_frames + reader.stride:
                         elapsed = time.perf_counter() - t_start
                         rtf = elapsed / max(ft, 1e-3)
                         if rtf > trigger_rtf and reader.stride < max_stride:
@@ -194,7 +213,26 @@ class EventPipeline:
         if progress:
             progress(1.0, "done")
         timer.log(f"{meta.video_id} ")
-        return PipelineResult(events, segments, tracks, scene, signal, meta, timer.summary(), reader.stride)
+        return PipelineResult(events, segments, tracks, scene, signal, meta, timer.summary(), reader.stride, align_info)
+
+    @staticmethod
+    def _reader(video_path: str, vcfg: dict, target_hz: float | None, crops: list | None = None):
+        """ffmpeg reader (fast on 4K camera footage) with an OpenCV fall-back."""
+        if vcfg.get("backend", "ffmpeg") == "ffmpeg":
+            try:
+                kw = {
+                    "max_width": int(vcfg.get("max_width", 1920)),
+                    "skip_nonref": bool(vcfg.get("skip_nonref", True)),
+                    "target_hz": target_hz,
+                    "crops": crops,
+                }
+                it = iter(FFmpegReader(video_path, **kw))
+                next(it)  # smoke test: ffmpeg starts and decodes a frame
+                it.close()
+                return FFmpegReader(video_path, **kw)
+            except Exception as exc:  # missing binary, unsupported codec, ...
+                log.warning("ffmpeg reader unavailable (%r); using OpenCV", exc)
+        return FrameReader(video_path, 1)
 
     # ------------------------------------------------------------------ dev-only perception cache
     def _cache_path(self, video_path: str, stride: int) -> Path | None:
@@ -205,13 +243,16 @@ class EventPipeline:
         st = os.stat(video_path)
         key = json.dumps(
             [
+                CACHE_VERSION,
                 Path(video_path).name,
                 st.st_size,
                 stride,
                 self.device,
                 self.cfg["detector"],
                 self.cfg.get("tracker", {}),
+                self.cfg.get("video", {}),
                 self.cfg.get("scene", {}).get("path"),
+                json.dumps(Scene.read_json(self.cfg.get("scene", {}).get("path")), sort_keys=True),
             ],
             sort_keys=True,
             default=str,

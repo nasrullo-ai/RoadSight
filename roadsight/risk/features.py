@@ -128,6 +128,11 @@ def measure(active, t: float, scale, scene, red_lines: list, cfg: dict, height: 
             break
 
     # Pedestrian on the carriageway with a vehicle closing in.
-    if is_ped.any() and raw["ped_ttc"] < 3.0 and scene.in_carriageway(x[is_ped], y[is_ped]).any():
-        raw["ped"] = 1.0
+    if is_ped.any() and raw["ped_ttc"] < 3.0:
+        px, py = x[is_ped], y[is_ped]
+        on_road = scene.in_carriageway(px, py)
+        if scene.has_crosswalks():  # people on a crosswalk at a signalised junction are expected there
+            on_road &= ~scene.in_crosswalk(px, py, buffer_px=float(np.median(sc)) * 0.5)
+        if on_road.any():
+            raw["ped"] = 1.0
     return raw

@@ -21,21 +21,23 @@ from roadsight.perception.tracker import Tracker
 from roadsight.risk.features import FEATURES, measure
 from roadsight.scene.auto import AutoScene
 from roadsight.scene.geometry import side_of_polyline
-from roadsight.scene.scene import Scene
+from roadsight.scene.scene import Scene, load_aligned
 from roadsight.utils.seed import seed_everything
 
-# Hand-set, then chosen on logged features: alarms on synthetic last-moment conflicts, silent on normal
-# dense traffic. Dense slow traffic makes short gaps normal, hence the negative density weight.
+# Chosen on logged features (tools-style offline calibration): zero alarms on 26.5 minutes of normal traffic,
+# including the four organizer intersection videos, while synthetic last-moment conflicts still alarm.
+# Dense slow traffic makes short gaps normal, hence the negative density weight; the red-light-approach
+# feature fired on vehicles closing up to a red queue, so it is kept but weighted 0.
 DEFAULT_WEIGHTS = {
-    "bias": -5.0,
-    "f_ttc": 7.0,
+    "bias": -6.0,
+    "f_ttc": 9.0,
     "f_brake": 0.0,
     "f_swerve": 0.0,
-    "f_conflict": 2.0,
+    "f_conflict": 1.0,
     "f_wrong": 2.5,
-    "f_redrun": 2.0,
-    "f_ped": 2.0,
-    "f_density": -2.0,
+    "f_redrun": 0.0,
+    "f_ped": 1.0,
+    "f_density": -3.0,
 }
 
 
@@ -89,7 +91,10 @@ class CausalRiskModel:
         self.scale = RowScale.default(h)
         self._scale_y: deque = deque(maxlen=4000)
         self._scale_s: deque = deque(maxlen=4000)
-        self.scene = Scene.load(self.cfg.get("scene", {}).get("path"), w, h)
+        self._scene_path = self.cfg.get("scene", {}).get("path")
+        self._needs_align = Scene.reference_image(self._scene_path) is not None
+        # Until the first frame arrives, only the automatic scene is available.
+        self.scene = Scene.load(self._scene_path, w, h, geometry=not self._needs_align)
         self.auto = AutoScene.empty(w, h, self.cfg.get("scene", {}))
         self.scene.auto = self.auto
         self._road_counts = np.zeros_like(self.auto.road, dtype=np.float64)
@@ -110,6 +115,15 @@ class CausalRiskModel:
         self.n += 1
         if k % self.stride != 0:
             return self.last_score
+        if self._needs_align:  # align the drawn scene on the first frame this estimator sees (causal)
+            self._needs_align = False
+            scene, _ = load_aligned(
+                self._scene_path, frame, self.scene.width, self.scene.height, int(self.cfg.get("scene", {}).get("align_min_inliers", 40))
+            )
+            scene.auto = self.auto
+            self.scene = scene
+            self._sig_hist = {r.id: deque(maxlen=max(1, int(self.fps / self.stride))) for r in self.scene.signal_rois}
+            self._line_sides = {}
         det = self._detector([frame])[0]
         return self.process_tracks(self.tracker.update(det), t_sec, frame)
 

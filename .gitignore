@@ -28,3 +28,8 @@ web/static/eda/
 
 # Spec PDF (SPEC.md is the tracked copy)
 *.pdf
+
+# Organizer test videos (large)
+data/test4/
+*.MP4
+*.MP4.part

@@ -18,7 +18,7 @@ class Congestion(EventRule):
         cap_frac = self.p("capacity_frac", 0.6)
         min_len = self.p("min_len_sec", 15.0)
         min_len_nosig = self.p("min_len_no_signal_sec", 60.0)
-        green_overlap = self.p("green_overlap_sec", 5.0)
+        green_overlap = self.p("green_overlap_sec", 10.0)
         moving = self.p("moving_speed", 0.5)
 
         veh = tracks.of_kind("vehicle")
@@ -71,13 +71,13 @@ class Congestion(EventRule):
 
         times = np.arange(n_bins) * bin_sec
         out = []
-        sig_known = signal.known()
+        vsig = self.scene.vehicle_signal()
+        sig_known = signal.known(vsig) if vsig else signal.known()
         for s, e in runs_min_duration(congested, times, min_len, max_gap_sec=3 * bin_sec):
             start, end = times[s], times[e] + bin_sec
             if sig_known:
-                green = sum(
-                    max(0.0, min(end, b_) - max(start, a_)) for segs in signal.segments.values() for a_, b_, st in segs if st == "green"
-                )
+                segs = signal.segments.get(vsig, []) if vsig else [s for v in signal.segments.values() for s in v]
+                green = sum(max(0.0, min(end, b_) - max(start, a_)) for a_, b_, st in segs if st == "green")
                 if green < green_overlap:
                     continue
             elif end - start < min_len_nosig:

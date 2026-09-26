@@ -9,7 +9,7 @@ import numpy as np
 from roadsight.events.base import EventRule, Segment, register, runs_min_duration
 
 ANIMALS = (16, 17, 18, 19)  # dog, horse, sheep, cow
-OBJECTS = (24, 26, 28)  # backpack, handbag, suitcase
+OBJECTS = (28,)  # suitcase; backpacks and handbags are almost always carried
 
 
 @register
@@ -28,6 +28,23 @@ class RoadObstacle(EventRule):
         animal_sec = self.p("animal_min_sec", 3.0)
         object_sec = self.p("object_min_sec", 5.0)
         df = tracks.df[tracks.df["cls"].isin(ANIMALS + OBJECTS)]
+        if df.empty:
+            return []
+        # Objects or animals next to a person are carried or walked, not obstacles.
+        people = tracks.df[tracks.df["cls"] == 0]
+        p_by_frame = {int(f): g[["x1", "y1", "x2", "y2"]].to_numpy() for f, g in people.groupby("frame", sort=True)}
+        pad = self.p("person_pad_bl", 1.0)
+        near = []
+        for r in df.itertuples(index=False):
+            b = p_by_frame.get(int(r.frame))
+            s = pad * float(tracks.scale(r.foot_y))
+            near.append(
+                b is not None
+                and bool(
+                    ((r.foot_x >= b[:, 0] - s) & (r.foot_x <= b[:, 2] + s) & (r.foot_y >= b[:, 1] - s) & (r.foot_y <= b[:, 3] + s)).any()
+                )
+            )
+        df = df[~np.array(near, dtype=bool)]
         out = []
         for tid, g in df.groupby("track_id", sort=True):
             t = g["t"].to_numpy()

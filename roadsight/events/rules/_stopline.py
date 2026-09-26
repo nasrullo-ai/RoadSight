@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from roadsight.scene.geometry import path_crosses_polyline, side_of_polyline
+from roadsight.scene.geometry import distance_to_polyline, path_crosses_polyline, side_of_polyline
 
 
 def front_points(g, scale) -> tuple[np.ndarray, np.ndarray]:
@@ -38,14 +38,19 @@ def approach_side(line, vehicle_groups, scale) -> float:
     return 1.0 if votes >= 0 else -1.0
 
 
-def crossing_index(g, line, side_from: float, scale) -> int | None:
-    """Index of the first sample after the front crosses ``line`` from ``side_from``."""
+def signed_distance_bl(g, line, side_from: float, scale) -> np.ndarray:
+    """Distance of the vehicle front past the stop line in body lengths (negative = still approaching)."""
     fx, fy = front_points(g, scale)
-    if len(fx) < 2:
-        return None
-    p = np.stack([fx, fy], 1)
-    cross = path_crosses_polyline(p[:-1], p[1:], line.points)
-    for k in np.flatnonzero(cross):
-        if side_of_polyline(fx[k : k + 1], fy[k : k + 1], line.points)[0] == side_from:
-            return int(k + 1)
-    return None
+    side = side_of_polyline(fx, fy, line.points)
+    d = distance_to_polyline(fx, fy, line.points) / scale(fy)
+    return np.where(side == side_from, -d, d)
+
+
+def within_line_span(g, line, margin_bl: float, scale) -> np.ndarray:
+    """Whether the front is alongside the drawn line (not beyond its ends), so the side test is meaningful."""
+    fx, fy = front_points(g, scale)
+    a, b = line.points[0], line.points[-1]
+    ab = b - a
+    t = ((fx - a[0]) * ab[0] + (fy - a[1]) * ab[1]) / max(float(ab @ ab), 1e-9)
+    ext = margin_bl * scale(fy) / max(float(np.hypot(*ab)), 1e-9)
+    return (t >= -ext) & (t <= 1 + ext)

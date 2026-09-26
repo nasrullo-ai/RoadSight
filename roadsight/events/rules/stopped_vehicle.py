@@ -59,6 +59,8 @@ class StoppedVehicle(EventRule):
         moved_bl = self.p("moved_before_bl", 3.0)
         veh_all = tracks.of_kind("vehicle")
         veh = tracks.of_kind("vehicle", reliable=True)
+        veh = veh[~veh["cls"].isin(self.p("exclude_classes", [5]))]  # buses dwell at stops
+        veh = veh[veh["track_size"] >= self.p("min_size_frac", 0.04) * tracks.height]  # far-field stops are unreliable
         if veh.empty:
             return []
         eps = []
@@ -107,17 +109,20 @@ class StoppedVehicle(EventRule):
                 continue
             if self.scene.has_carriageway() and not self.scene.in_carriageway(np.array([ep["x"]]), np.array([ep["y"]]))[0]:
                 continue
-            if self.scene.queue_zones and points_in_any(np.array([ep["x"]]), np.array([ep["y"]]), self.scene.queue_zones)[0]:
-                mid = (ep["start"] + ep["end"]) / 2
-                if signal.known() and signal.state_at(None, mid) != "green":
-                    continue
+            # Waiting in a signal queue (drawn zone, or learned from where many vehicles stop) is not an event,
+            # unless the signal is known to be green for most of the stop or the stop is very long.
+            pt = (np.array([ep["x"]]), np.array([ep["y"]]))
             auto = self.scene.auto
-            in_auto_queue = (
-                not self.scene.queue_zones
-                and auto is not None
-                and auto.queue is not None
-                and bool(auto.lookup(auto.queue, np.array([ep["x"]]), np.array([ep["y"]]))[0])
+            in_queue = bool(self.scene.queue_zones and points_in_any(*pt, self.scene.queue_zones)[0]) or (
+                not self.scene.queue_zones and auto is not None and auto.queue is not None and bool(auto.lookup(auto.queue, *pt)[0])
             )
+            vsig = self.scene.vehicle_signal()
+            if in_queue and vsig and signal.known(vsig):
+                ts = np.linspace(ep["start"], ep["end"], 20)
+                in_queue = np.mean([signal.state_at(vsig, x) != "green" for x in ts]) > 0.5
+            if self.scene.intersection and points_in_any(*pt, self.scene.intersection)[0]:
+                in_queue = True  # waiting inside the junction for a gap to turn
+            in_auto_queue = in_queue
             during = (vt >= ep["start"]) & (vt <= ep["end"]) & ~np.isin(vtid, list(ep["tids"]))
             r = radius_bl * float(tracks.scale(ep["y"]))
             near = during & (np.hypot(vfx - ep["x"], vfy - ep["y"]) < r) & (vsp > moving)

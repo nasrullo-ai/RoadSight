@@ -11,26 +11,31 @@ RED, AMBER, GREEN, UNKNOWN = "red", "amber", "green", "unknown"
 _STATES = (RED, AMBER, GREEN)
 
 
-def classify_roi(frame: np.ndarray, rect: tuple[int, int, int, int], min_frac: float = 0.02) -> str:
-    """Pick the brightest lit lamp colour inside ``rect`` (x1, y1, x2, y2)."""
+def classify_roi(frame: np.ndarray, rect: tuple[int, int, int, int], min_frac: float = 0.0015) -> str:
+    """Colour of the lit lamp inside ``rect`` (x1, y1, x2, y2).
+
+    A lamp counts as lit when it is clearly brighter than the rest of the signal head (adaptive to noon
+    sun and dusk) and saturated. Green includes the teal of LED signals. ``unknown`` when no colour has
+    enough lit pixels or two colours are about equally strong.
+    """
     x1, y1, x2, y2 = rect
     h, w = frame.shape[:2]
     x1, x2 = max(0, x1), min(w, x2)
     y1, y2 = max(0, y1), min(h, y2)
     if x2 - x1 < 2 or y2 - y1 < 2:
         return UNKNOWN
-    hsv = cv2.cvtColor(frame[y1:y2, x1:x2], cv2.COLOR_BGR2HSV)
-    hch, sch, vch = hsv[..., 0], hsv[..., 1], hsv[..., 2]
-    lit = (sch > 90) & (vch > 150)
+    hsv = cv2.cvtColor(np.ascontiguousarray(frame[y1:y2, x1:x2]), cv2.COLOR_BGR2HSV)
+    hch, sch, vch = hsv[..., 0].astype(np.int16), hsv[..., 1], hsv[..., 2].astype(np.int16)
+    lit = (vch >= max(60, int(np.median(vch)) + 25)) & (sch >= 60)
     masks = {
-        RED: lit & ((hch <= 10) | (hch >= 160)),
-        AMBER: lit & (hch > 10) & (hch <= 35),
-        GREEN: lit & (hch >= 40) & (hch <= 95),
+        RED: lit & ((hch <= 12) | (hch >= 165)),
+        AMBER: lit & (hch > 12) & (hch <= 32),
+        GREEN: lit & (hch >= 45) & (hch <= 100),
     }
-    area = float(hch.size)
-    scores = {k: float((vch[m].astype(np.float64)).sum()) / area if m.any() else 0.0 for k, m in masks.items()}
-    best = max(scores, key=scores.get)
-    if masks[best].sum() / area < min_frac:
+    counts = {k: int(m.sum()) for k, m in masks.items()}
+    ranked = sorted(counts, key=counts.get, reverse=True)
+    best, second = ranked[0], ranked[1]
+    if counts[best] < max(12, min_frac * hch.size) or counts[best] < 2 * counts[second]:
         return UNKNOWN
     return best
 

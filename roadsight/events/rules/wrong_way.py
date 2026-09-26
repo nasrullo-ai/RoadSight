@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from roadsight.events.base import EventRule, Segment, register, runs_min_duration
+from roadsight.scene.geometry import points_in_any
 
 
 @register
@@ -33,6 +34,8 @@ class WrongWay(EventRule):
             u = np.stack([g["vx"].to_numpy(), g["vy"].to_numpy()], 1) / np.maximum(sp, 1e-9)[:, None]
             cos = (u * dirs).sum(1)
             against = (sp > min_speed) & (strength >= min_strength) & (cos < cos_thr)
+            if self.scene.intersection:  # turning movements inside the junction are not wrong-way driving
+                against &= ~points_in_any(x, y, self.scene.intersection)
             t = g["t"].to_numpy()
             real = ~g["interp"].to_numpy()
             along = (sp > min_speed) & (strength >= min_strength) & (cos > 0.5)

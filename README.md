@@ -48,11 +48,12 @@ automatically only if Part A alone runs slower than real time. Per-stage times a
 
 | Stage | Learned or rule | Where |
 | --- | --- | --- |
+| Decoding | ffmpeg: multi-threaded, skips non-reference (B) frames, picks ~12.5 Hz by timestamp, downscales to 1920 px; OpenCV fall-back | `roadsight/io/video.py` |
 | Detection | Learned: YOLO11m COCO weights, unchanged (YOLO11n on CPU) | `roadsight/perception/detector.py` |
 | Tracking | ByteTrack (Ultralytics implementation), per-instance IDs | `roadsight/perception/tracker.py` |
 | Track clean-up | Split at implausible jumps, interpolate gaps up to 1 s, drop tracks under 1 s | `roadsight/perception/tracktable.py` |
 | Kinematics | Savitzky-Golay (Part A) or least squares (Part B); speeds in body lengths per second | `roadsight/perception/kinematics.py` |
-| Scene | Hand-drawn `configs/scene.json`, with road, lane flow and crosswalks learned from tracks as fall-back | `roadsight/scene/` |
+| Scene | Hand-drawn `configs/scene.json` on `configs/scene_ref.jpg`, aligned to each video by SIFT + RANSAC homography; road, lane flow, crosswalks and queue zones learned from tracks as fall-back | `roadsight/scene/` |
 | Signal state | HSV colour of drawn signal-head boxes | `roadsight/perception/signal.py` |
 | Events | 14 rules, one file per class | `roadsight/events/rules/` |
 | Post-processing | Confidence gate, merge, minimum length, offsets, clip, same-class non-overlap, rounding | `roadsight/events/postprocess.py` |
