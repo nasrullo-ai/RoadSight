@@ -40,3 +40,6 @@ starter_kit/
 
 # Output of the official command when run locally
 /predictions.json
+
+# Original team photos (cropped copies are in web/static/img/team/)
+team_photos/

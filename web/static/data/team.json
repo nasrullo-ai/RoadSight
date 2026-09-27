@@ -4,8 +4,8 @@
     "role": "Team lead, perception and event rules",
     "contributions": "Specification, detector and tracker integration, scene alignment, the 14 event rules.",
     "past": "",
-    "photo": "",
-    "github": "",
+    "photo": "img/team/nasrullo.jpg",
+    "github": "https://github.com/nasrullo-ai",
     "linkedin": "",
     "portfolio": ""
   },
@@ -14,7 +14,7 @@
     "role": "Risk model and evaluation",
     "contributions": "Causal risk estimator (Part B), dev-set review of the sample videos, threshold tuning.",
     "past": "",
-    "photo": "",
+    "photo": "img/team/gulasal.jpg",
     "github": "",
     "linkedin": "",
     "portfolio": ""
@@ -24,7 +24,7 @@
     "role": "Website and demo",
     "contributions": "Website, live demo backend, EDA and annotated renders of the sample videos.",
     "past": "",
-    "photo": "",
+    "photo": "img/team/gulzoda.jpg",
     "github": "",
     "linkedin": "",
     "portfolio": ""
