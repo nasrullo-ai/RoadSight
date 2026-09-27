@@ -99,8 +99,12 @@ an impact, new track IDs of the same wreck extend the crash until it stops, and 
 accident is confirmed for the same pair. Accepting any speed jolt at contact without confirmation would also have
 caught the T-bone, but produced three false accidents in dense stop-and-go traffic, so the rule stays conservative.
 The night head-on is missed because the contact is lost in headlight glare. Part B does not anticipate these
-crashes (AP 0): the crashing vehicles enter the frame about a second before impact, too late for time to collision.
-The clips are from other cameras and were used only for this validation, not for training; they are not redistributed.
+crashes (official Score B 0 on these clips). We replayed its recorded tracks (`tools/risk_cache.py`,
+`tools/tune_risk.py`) to see why: before the rollover, time to collision only becomes finite 0.2 s before impact,
+and nothing rises before the night head-on, while on the organizer's camera a finite time to collision appears in
+47% of normal frames (1st percentile 0.1 s: queues and perspective). No setting of the current features separates
+the seconds before these crashes from everyday traffic at the test camera, so we did not tune Part B on three clips;
+that needs a learned anticipation model trained on a crash dataset (DoTA, CCD, ACCIDENT). The clips are from other cameras and were used only for this validation, not for training; they are not redistributed.
 
 ## Runtime
 
@@ -126,9 +130,12 @@ The limit is 3x the video length. Part B is dominated by the harness's own OpenC
 | [COCO](https://cocodataset.org) | CC BY 4.0 | Training data of the detector weights; we trained nothing |
 | Organizer sample videos | Organizer's | Scene drawing, review, runtime; not redistributed |
 | `vehicles.mp4`, `vehicles-2.mp4` | Roboflow `supervision` examples | Development only, not committed ([`data/dev_labels.json`](data/dev_labels.json): no events) |
-| Four public CCTV clips (three real crashes, one dense traffic) | Publicly posted web videos; the dense-traffic clip is from Pexels (Pexels License) | Validation of the accident rule only (no training), not committed; labels in [`data/dev_labels.json`](data/dev_labels.json) |
+| Rollover crash, `-RrDtLjWsT4_00.mp4` | YouTube, [Traffic Cam Watch: "Alabama: Red Light Runner Causes T-Bone Rollover Accident"](https://www.youtube.com/watch?v=-RrDtLjWsT4), standard YouTube licence | Validation only, not redistributed |
+| T-bone crash, `tbone (3).mp4` | Abu Dhabi Police traffic-camera footage (police watermark), publicly posted; exact URL not recorded | Validation only, not redistributed |
+| Night head-on crash, `headon-nn.mp4` | Publicly posted US traffic-camera footage; exact URL not recorded | Validation only, not redistributed |
+| Dense traffic, `93871-642182011_medium.mp4` | [Pixabay video 93871 "Road, Cars, Bridge"](https://pixabay.com/videos/id-93871/) by sergo75-75, Pixabay Content License | Validation only, not redistributed |
 
-No model was trained or fine-tuned; the clips above were used only for validation. Because Ultralytics is AGPL-3.0,
+No model was trained or fine-tuned. The four crash and traffic clips above were only used to check the accident rule and the risk score; they are not in the repository, not on the website, and none of their frames were used to train anything; labels in [`data/dev_labels.json`](data/dev_labels.json). Because Ultralytics is AGPL-3.0,
 distributing this repository together with it falls under the AGPL.
 
 Weight checksums (SHA-256):
@@ -150,6 +157,9 @@ picked by timestamp, never at random; RANSAC for scene alignment uses a fixed se
 machine give the same `predictions.json` (`tests/test_determinism.py`). The one non-deterministic
 safeguard is the adaptive stride: it only engages when Part A runs slower than real time (on our 4 GB
 laptop GPU it runs at ~0.45x, so it never engaged). Different GPUs or driver versions can change detections slightly.
+Checked with a clean environment built only from `requirements.txt` (Python 3.12, torch 2.5.1+cu121, ultralytics
+8.3.40): all 60 tests pass and the official harness reproduces the events of `predictions_samples.json` exactly on
+all four samples (1.75x to 1.98x the video length on the RTX 3050 laptop GPU).
 
 ## Tests
 
@@ -173,7 +183,7 @@ assembles a Hugging Face Docker Space in `build/space/` (instructions printed at
 
 Pages: Home, Approach, Data (EDA), Results (every sample annotated, event timeline, risk curve, failure
 cases), Live demo, Report, Team, Links. Refresh the sample renders with
-`python tools/render.py --pred predictions_samples.json` and the EDA with `make eda`.
+`make render` (annotated videos, timelines and one example per class, reusing the risk curves in `predictions_samples.json`) and the EDA with `make eda`.
 
 ## Development workflow
 

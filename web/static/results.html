@@ -34,6 +34,11 @@
     <div id="cands"></div>
   </section>
 
+  <h2>One example of each class we detect</h2>
+  <p class="muted">A still from our annotated video in the middle of the event. "Checked" means we verified this event
+    frame by frame against the task's definition; click to play it.</p>
+  <div id="examples" class="examples"><p class="muted ui">Loading.</p></div>
+
   <h2>Failure cases we know about</h2>
   <ul>
     <li>Two people walking side by side on a crossing were flagged as a near miss (C3902, 13 s), and a person waiting at
@@ -63,12 +68,13 @@
   if (!rows.length) { $("picker").innerHTML = '<p class="muted">No rendered samples yet. Run <code>make render</code>.</p>'; return; }
   $("picker").innerHTML = rows.map((r) => `<a class="btn secondary" href="#${encodeURIComponent(r.stem)}">${RS.esc(r.video)}</a>`).join("");
 
-  async function load(stem) {
+  async function load(stem, at = null) {
     const r = await RS.getJSON(`media/${stem}.json`);
     $("view").hidden = false;
     $("title").textContent = r.meta.video_id;
     const player = $("player");
     player.src = `media/${stem}.mp4`;
+    if (at !== null) player.addEventListener("loadedmetadata", () => { player.currentTime = at; }, { once: true });
     $("caption").textContent = `${r.meta.width}x${r.meta.height}, ${r.meta.fps.toFixed(1)} fps, ${r.meta.duration.toFixed(1)} s. Speeds are in body lengths per second.`;
     const seek = (t) => { player.currentTime = t; player.play(); };
     const tl = RS.timeline($("timeline"), { events: r.events, gt: r.gt_events || [], duration: r.meta.duration, onSeek: seek });
@@ -83,8 +89,19 @@
       ${gated.map((c) => `<tr><td>${RS.esc(RS.pretty(c[2]))}</td><td class="num">${RS.fmt(c[0])}</td><td class="num">${RS.fmt(c[1])}</td><td class="num">${c[3].toFixed(2)}</td></tr>`).join("")}
       </tbody></table></div>` : '<p class="muted ui">None.</p>';
   }
-  const pickFromHash = () => load(decodeURIComponent(location.hash.slice(1)) || rows[0].stem);
+  const pickFromHash = () => {
+    const [stem, at] = decodeURIComponent(location.hash.slice(1)).split("@");
+    load(stem || rows[0].stem, at ? parseFloat(at) : null);
+    if (at) document.getElementById("view").scrollIntoView({ behavior: "smooth" });
+  };
   window.addEventListener("hashchange", pickFromHash);
+  RS.getJSON("media/examples.json").then((ex) => {
+    $("examples").innerHTML = ex.length ? ex.map((e) => `<figure class="example">
+      <a href="#${encodeURIComponent(e.stem)}@${e.start}"><img src="media/${RS.esc(e.image)}" alt="${RS.esc(RS.pretty(e.label))} in ${RS.esc(e.video)}" loading="lazy"></a>
+      <figcaption><strong>${RS.esc(RS.pretty(e.label))}</strong> ${e.verified ? '<span class="pill on">checked</span>' : '<span class="pill">not confirmed</span>'}<br>
+      ${RS.esc(e.video)}, ${RS.fmt(e.start)} to ${RS.fmt(e.end)}; ${e.count} in the four samples</figcaption></figure>`).join("")
+      : '<p class="muted ui">No events detected.</p>';
+  }).catch(() => { $("examples").innerHTML = '<p class="muted ui">Examples are not published yet.</p>'; });
   pickFromHash();
 })();
 </script>

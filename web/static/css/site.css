@@ -177,3 +177,9 @@ figcaption { color: var(--muted); font-size: .9rem; margin-top: .4rem; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Results: one example per class */
+.examples{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem}
+.example{margin:0}
+.example img{width:100%;height:auto;border-radius:6px;display:block}
+.example figcaption{font-size:.9rem;margin-top:.35rem}

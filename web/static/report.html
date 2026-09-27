@@ -65,8 +65,12 @@
     the new IDs of the same wreck extend the crash until it stops, and a near miss is dropped when an accident is
     confirmed for the same pair. Accepting any speed jolt at contact would also have caught the T-bone, but it
     produced three false accidents in dense stop-and-go traffic, so the rule stays conservative. The night head-on is
-    lost in headlight glare. Part B does not anticipate these crashes: the crashing vehicles enter the frame about a
-    second before impact, too late for time to collision to rise.</p>
+    lost in headlight glare. Part B does not anticipate these crashes. Replaying its recorded tracks showed why: before the
+    rollover, time to collision only becomes finite 0.2 s before impact, and nothing rises before the night head-on,
+    while on the organizer's camera a finite time to collision appears in 47% of normal frames (queues and perspective
+    make "about to touch" routine). No setting of our hand-made features separates the seconds before these crashes
+    from everyday traffic at the test camera, so we did not tune Part B on three clips: that would raise false alarms
+    on the camera that matters. A real improvement needs a learned anticipation model trained on a crash dataset.</p>
 
   <h2>What worked</h2>
   <ul>
@@ -141,7 +145,9 @@
   <ul>
     <li>Label the organizer samples end to end (recall, not just precision) and run <code>tools/tune.py</code> to set per-class thresholds and boundary offsets.</li>
     <li>Congestion: the samples show queues spilling into the junction, which the congestion rule (a whole direction at a standstill for 15 s through a green phase) never reported. It needs labelled examples to calibrate.</li>
-    <li>Fit the risk weights on labelled pre-accident windows with <code>tools/fit_risk.py</code>.</li>
+    <li>Part B: train a learned anticipation model on a public crash dataset (DoTA, CCD or the ACCIDENT benchmark) on top of
+      the tracks, and evaluate it on recorded tracks with <code>tools/tune_risk.py</code>, which counts every score of 0.5 or
+      more on the organizer samples as a false alarm.</li>
     <li>Fine-tune the detector on CCTV viewpoints (UA-DETRAC) if small or night vehicles are missed.</li>
   </ul>
 </main>

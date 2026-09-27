@@ -28,7 +28,8 @@ format:
 	$(PY) -m black roadsight tools tests web solution.py
 
 render:           ## annotated videos + timelines for the website
-	$(PY) tools/render.py --videos $(VIDEOS) --out web/static/media --gt $(GT)
+	$(PY) tools/render.py --videos $(VIDEOS) --out web/static/media --pred $(PRED)
+	$(PY) tools/examples.py --media web/static/media
 
 eda:              ## EDA stats and plots for the website
 	$(PY) tools/eda.py --videos $(VIDEOS) --out web/static/eda
