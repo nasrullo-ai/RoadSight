@@ -187,3 +187,41 @@ def test_two_pedestrians_side_by_side_are_not_a_near_miss():
     a = lambda t: (*piecewise([(0, 300, 420), (3.9, 620, 420), (4.2, 625, 440), (8, 640, 440)])(t), 30.0, 80.0)  # noqa: E731
     b = lambda t: (*piecewise([(0, 900, 420), (8, 660, 420)])(t), 30.0, 80.0)  # noqa: E731
     assert run("near_miss", make_tracks([(1, 0, a, 0, 8), (2, 0, b, 0, 8)], 10), duration=10) == []
+
+
+def test_rollover_confirmed_by_vanishing_track():
+    # A (2.2 BL/s, heading right) hits B (1.1 BL/s, heading up) at t=3 in mid-frame; B's track ends at the contact
+    # (it rolls over and the detector loses it) and A collapses to a slow slide. The clip ends 2 s later.
+    a = car(piecewise([(0, 100, 440), (3.0, 560, 440), (3.3, 590, 440), (5, 620, 440)]))
+    b = car(piecewise([(0, 610, 700), (3.0, 610, 470)]))
+    segs = run("accident", make_tracks([(1, 2, a, 0, 5), (2, 2, b, 0, 3.1)], 5.2), duration=5.2)
+    assert len(segs) == 1 and abs(segs[0].start - 3.0) < 0.8
+
+
+def test_jolt_without_confirmation_is_not_accident():
+    # The same contact and jolt, but both keep driving and nobody vanishes: in dense stop-and-go traffic this
+    # pattern is common, so without standing still or people arriving it stays below the gate.
+    a = car(piecewise([(0, 100, 440), (3.0, 560, 440), (3.3, 590, 440), (5, 620, 440)]))
+    b = car(piecewise([(0, 610, 700), (3.0, 610, 470), (3.3, 640, 455), (5, 760, 420)]))
+    assert run("accident", make_tracks([(1, 2, a, 0, 5), (2, 2, b, 0, 5)], 5.2), duration=5.2) == []
+
+
+def test_overtaking_with_overlapping_boxes_is_not_accident():
+    # Perspective overlap of neighbouring lanes at constant speed: contact in the image, no impact.
+    a = car(piecewise([(0, 100, 440), (10, 1100, 440)]))
+    b = car(piecewise([(0, 300, 410), (10, 900, 410)]))
+    assert run("accident", make_tracks([(1, 2, a, 0, 10), (2, 2, b, 0, 10)], 10), duration=10) == []
+
+
+def test_near_miss_suppressed_by_accident_on_the_same_pair():
+    from roadsight.events.base import Segment
+    from roadsight.events.postprocess import suppress_near_miss
+
+    segs = [
+        Segment(3.0, 5.0, "accident", 0.8, {"tracks": [1, 2]}),
+        Segment(2.8, 3.2, "near_miss", 0.8, {"tracks": [2, 1]}),  # the same crash seen as a near miss: dropped
+        Segment(20.0, 21.0, "near_miss", 0.8, {"tracks": [2, 1]}),  # much later: kept
+        Segment(3.0, 3.5, "near_miss", 0.8, {"tracks": [7, 8]}),  # other road users: kept
+    ]
+    out = suppress_near_miss(segs, CFG)
+    assert [(s.label, s.start) for s in out] == [("accident", 3.0), ("near_miss", 20.0), ("near_miss", 3.0)]

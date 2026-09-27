@@ -47,6 +47,27 @@
   <p class="muted">This measures precision only. Nobody watched the full 18 minutes for missed events, so recall
     is unknown; <code>data/review_samples.json</code> in the repository lists every verdict.</p>
 
+  <h2>Real crash clips</h2>
+  <p>The samples contain no accidents, so we tested the accident rule on four public CCTV clips from other
+    intersections: three real crashes and one dense-traffic clip without events. We labelled the crashes with the
+    task's conventions and scored them, together with our two development clips, with the official evaluator.</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Clip</th><th>Ground truth</th><th>RoadSight</th></tr></thead>
+    <tbody>
+      <tr><td>Rollover, downtown junction, day</td><td class="num">5.85-8.50 s</td><td>accident 5.95-8.43 s (matched even at tIoU 0.7)</td></tr>
+      <tr><td>T-bone, junction, day (6 s clip)</td><td class="num">0.70-5.00 s</td><td>missed</td></tr>
+      <tr><td>Head-on, junction, night</td><td class="num">2.00-4.00 s</td><td>missed</td></tr>
+      <tr><td>Three normal-traffic clips</td><td>no events</td><td>no events</td></tr>
+    </tbody>
+  </table></div>
+  <p>Before this test the rollover was reported as a near miss and no clip produced an accident. A vehicle that
+    spins or rolls breaks its track, so a track vanishing mid-junction at the moment of contact now confirms the impact,
+    the new IDs of the same wreck extend the crash until it stops, and a near miss is dropped when an accident is
+    confirmed for the same pair. Accepting any speed jolt at contact would also have caught the T-bone, but it
+    produced three false accidents in dense stop-and-go traffic, so the rule stays conservative. The night head-on is
+    lost in headlight glare. Part B does not anticipate these crashes: the crashing vehicles enter the frame about a
+    second before impact, too late for time to collision to rise.</p>
+
   <h2>What worked</h2>
   <ul>
     <li><strong>Box-top velocity.</strong> Taking velocity from the top edge of each box instead of the bottom, and

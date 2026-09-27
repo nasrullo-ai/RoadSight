@@ -37,3 +37,6 @@ data/test4/
 
 # Organizer starter kit as delivered (the files in use are copied to the repo root unchanged)
 starter_kit/
+
+# Output of the official command when run locally
+/predictions.json

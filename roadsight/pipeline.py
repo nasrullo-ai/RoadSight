@@ -17,7 +17,7 @@ from roadsight import CLASSES
 from roadsight.config import load_config
 from roadsight.events import rules as _rules  # noqa: F401  (registers every rule)
 from roadsight.events.base import RULES, Segment
-from roadsight.events.postprocess import postprocess
+from roadsight.events.postprocess import postprocess, suppress_near_miss
 from roadsight.io.video import FFmpegReader, FrameReader, VideoMeta, probe, stride_for
 from roadsight.perception.detector import Detector, select_device
 from roadsight.perception.signal import SignalTimeline, classify_roi
@@ -209,6 +209,7 @@ class EventPipeline:
                     segments.extend(segs)
                 except Exception as exc:  # a broken rule must never sink the video
                     log.warning("rule %s failed: %r", label, exc)
+            segments = suppress_near_miss(segments, ev_cfg)
             events = postprocess(segments, meta.duration, ev_cfg)
         if progress:
             progress(1.0, "done")

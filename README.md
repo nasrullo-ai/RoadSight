@@ -79,6 +79,29 @@ flagged as jaywalking); both rules were fixed and a synthetic test was added for
 convention and now cover the whole vehicle footprint on the zebra. This is a precision check only:
 nobody watched the full videos for missed events, so recall is unknown.
 
+### Checking the accident rule on real crash clips
+
+The samples contain no accidents, so we collected four public CCTV clips from other intersections (three real
+crashes, one normal dense-traffic clip), labelled the crashes with the task's conventions in
+[`data/dev_labels.json`](data/dev_labels.json) and scored them with the official `evaluate.py`, together with
+the two development clips without events:
+
+| Clip | Ground truth | RoadSight |
+| --- | --- | --- |
+| Rollover at a downtown junction (day) | accident 5.85-8.50 s | accident 5.95-8.43 s (matched even at tIoU 0.7) |
+| T-bone at a junction (day, 6 s clip) | accident 0.70-5.00 s | missed |
+| Head-on at a junction (night) | accident 2.00-4.00 s | missed |
+| Three normal-traffic clips | no events | no events |
+
+Before this check the rollover came out as a near miss and nothing was reported as an accident. Fixes: a track
+that vanishes mid-junction at the moment of contact (a spinning or rolling vehicle breaks its track) now confirms
+an impact, new track IDs of the same wreck extend the crash until it stops, and a near miss is suppressed when an
+accident is confirmed for the same pair. Accepting any speed jolt at contact without confirmation would also have
+caught the T-bone, but produced three false accidents in dense stop-and-go traffic, so the rule stays conservative.
+The night head-on is missed because the contact is lost in headlight glare. Part B does not anticipate these
+crashes (AP 0): the crashing vehicles enter the frame about a second before impact, too late for time to collision.
+The clips are from other cameras and were used only for this validation, not for training; they are not redistributed.
+
 ## Runtime
 
 The official harness on the four organizer samples (4K 29.97 fps XAVC H.264 4:2:2 10-bit), Windows 11,
@@ -103,8 +126,9 @@ The limit is 3x the video length. Part B is dominated by the harness's own OpenC
 | [COCO](https://cocodataset.org) | CC BY 4.0 | Training data of the detector weights; we trained nothing |
 | Organizer sample videos | Organizer's | Scene drawing, review, runtime; not redistributed |
 | `vehicles.mp4`, `vehicles-2.mp4` | Roboflow `supervision` examples | Development only, not committed ([`data/dev_labels.json`](data/dev_labels.json): no events) |
+| Four public CCTV clips (three real crashes, one dense traffic) | Publicly posted web videos; the dense-traffic clip is from Pexels (Pexels License) | Validation of the accident rule only (no training), not committed; labels in [`data/dev_labels.json`](data/dev_labels.json) |
 
-No model was trained or fine-tuned, and no other dataset was used. Because Ultralytics is AGPL-3.0,
+No model was trained or fine-tuned; the clips above were used only for validation. Because Ultralytics is AGPL-3.0,
 distributing this repository together with it falls under the AGPL.
 
 Weight checksums (SHA-256):

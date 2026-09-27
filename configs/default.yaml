@@ -152,6 +152,10 @@ events:
     max_plausible_speed_bl: 8.0
     reaction_dv_bl: 0.6         # partner speed jolt at contact that counts as an impact
     deflection_deg: 30.0        # heading change at contact that counts as an impact
+    impact_confidence: 0.6      # a vehicle vanishing inside the frame at contact passes the gate on its own (others need stopping / people)
+    lost_window_sec: 1.0        # a track vanishing inside the frame this soon after contact counts as impact (spin, rollover)
+    fragment_radius_bl: 3.0     # abrupt stops of new track IDs this close to a confirmed crash ...
+    fragment_gap_sec: 3.0       # ... and this soon after it are the same wreck (IDs break while spinning); the crash lasts until they stop
   # ---------------- Tier 2 (need hand-drawn scene elements; disable themselves otherwise)
   near_miss:
     enabled: true

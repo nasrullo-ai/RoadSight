@@ -86,6 +86,9 @@ class Accident(EventRule):
         max_speed = self.p("max_plausible_speed_bl", 8.0)
         react_dv = self.p("reaction_dv_bl", 0.6)
         deflect_deg = self.p("deflection_deg", 30.0)
+        impact_conf = self.p("impact_confidence", 0.6)
+        lost_win = self.p("lost_window_sec", 1.0)
+        last_t = float(tracks.frame_times[-1]) if len(tracks.frame_times) else float(users["t"].max())
         out = []
         for c in sorted(cands, key=lambda c: c["tc"]):
             involved = [c["tid"]] + ([c["partner"]] if c["partner"] is not None else [])
@@ -107,8 +110,24 @@ class Accident(EventRule):
                 if self._closing(g0, gp, tc, tracks.scale) < min_closing:
                     continue  # stopping gently behind a queue is not a collision
                 vulnerable = int(gp["cls"].iloc[0]) in (0, 1, 3)
-                impact = vulnerable or self._reacts(gp, tc, react_dv, deflect_deg) or self._deflects(g0, tc, deflect_deg)
+                why = [
+                    name
+                    for name, hit in (
+                        ("vulnerable", vulnerable),
+                        ("partner_reacts", self._reacts(gp, tc, react_dv, deflect_deg)),
+                        ("deflects", self._deflects(g0, tc, deflect_deg)),
+                        ("lost_at_contact", any(self._lost_at_contact(g, tc, last_t, lost_win, tracks) for g in (g0, gp))),
+                    )
+                    if hit
+                ]
+                impact = bool(why)
+                c["why"] = why
+                # A speed jolt or deflection at contact also happens in dense stop-and-go traffic (perspective overlap,
+                # queues braking together), so it still needs confirmation: standing still afterwards or people arriving.
+                # A vehicle vanishing mid-junction at the contact (spin, rollover) is strong enough on its own.
                 conf = (0.5 if impact else 0.1) + 0.25 * stationary + 0.2 * people
+                if "lost_at_contact" in why:
+                    conf = max(conf, impact_conf)
             elif c["fixed"]:
                 conf = 0.35 + 0.25 * stationary + 0.2 * people
             else:
@@ -117,9 +136,30 @@ class Accident(EventRule):
                 conf = min(conf, 0.3)
             end = self._end_time(per_track, involved, tc, v_still, cap)
             out.append(
-                Segment(float(tc), float(max(end, tc + 1.0)), self.label, float(min(conf, 0.95)), {"tracks": involved, "kind": c["kind"]})
+                Segment(
+                    float(tc),
+                    float(max(end, tc + 1.0)),
+                    self.label,
+                    float(min(conf, 0.95)),
+                    {"tracks": involved, "kind": c["kind"], "xy": (c["x"], c["y"]), "impact": c.get("why", []), "still": stationary},
+                )
             )
-        return out
+        return self._extend_through_fragments(out, impact_conf, tracks.scale, cap)
+
+    def _extend_through_fragments(self, segs: list[Segment], gate: float, scale, cap: float) -> list[Segment]:
+        """A crashed vehicle often breaks into new track IDs while it spins or rolls; their abrupt stops at the
+        same spot right after a confirmed crash belong to it, so the crash lasts until the last of them."""
+        radius_bl = self.p("fragment_radius_bl", 3.0)
+        gap = self.p("fragment_gap_sec", 3.0)
+        for s in sorted((s for s in segs if s.confidence >= gate), key=lambda s: s.start):
+            x0, y0 = s.info["xy"]
+            r = radius_bl * float(scale(y0))
+            for f in sorted(segs, key=lambda f: f.start):
+                if f is s or f.start < s.start or f.start > s.end + gap:
+                    continue
+                if np.hypot(f.info["xy"][0] - x0, f.info["xy"][1] - y0) <= r:
+                    s.end = min(max(s.end, f.end), s.start + cap)
+        return segs
 
     @staticmethod
     def _plausible(g, tc, max_speed, min_real=0.6) -> bool:
@@ -153,6 +193,18 @@ class Accident(EventRule):
         if np.isfinite(before) and np.isfinite(after) and abs(after - before) >= dv:
             return True
         return Accident._deflects(g, tc, deflect_deg)
+
+    @staticmethod
+    def _lost_at_contact(g, tc, last_t, window, tracks) -> bool:
+        """The track ends right at the contact, inside the frame and well before the clip ends: a vehicle that
+        spins or rolls over breaks its track. Only used together with contact, closing speed and a speed drop."""
+        t_end = float(g["t"].max())
+        if not (tc - 0.3 <= t_end <= tc + window) or t_end > last_t - 1.0:
+            return False
+        row = g.iloc[-1]
+        mx, my = 0.03 * tracks.width, 0.03 * tracks.height
+        inside = mx < row["x1"] and row["x2"] < tracks.width - mx and my < row["y1"] and row["y2"] < tracks.height - my
+        return bool(inside)
 
     @staticmethod
     def _deflects(g, tc, deg) -> bool:

@@ -27,6 +27,24 @@ def class_params(cfg_events: dict, label: str) -> dict:
     return params
 
 
+def suppress_near_miss(segments: list[Segment], cfg_events: dict, window: float = 3.0) -> list[Segment]:
+    """Drop near misses whose road users are in a confirmed accident at about the same time (a crash is not a near miss)."""
+    gate = class_params(cfg_events, "accident")["min_confidence"]
+    crashes = [s for s in segments if s.label == "accident" and s.confidence >= gate]
+    if not crashes:
+        return segments
+
+    def involved(s: Segment) -> set:
+        return {int(t) for t in s.info.get("tracks", [])}
+
+    return [
+        s
+        for s in segments
+        if s.label != "near_miss"
+        or not any(involved(s) & involved(a) and s.start <= a.end + window and a.start <= s.end + window for a in crashes)
+    ]
+
+
 def merge_same_class(segs: list[Segment], gap: float) -> list[Segment]:
     segs = sorted(segs, key=lambda s: (s.start, s.end))
     out: list[Segment] = []
