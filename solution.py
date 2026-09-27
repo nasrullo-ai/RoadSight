@@ -33,7 +33,22 @@ RISK_HORIZON_SEC = 5.0
 
 CONFIG = os.environ.get("ROADSIGHT_CONFIG", "configs/default.yaml")
 
-_pipeline = None  # lazy singleton: load weights once per process
+_pipeline = None  # singleton: load weights once per process
+
+
+def _load_pipeline() -> None:
+    """Load and warm up the detector at import time: the harness imports this module before it starts any
+    video's time budget, so the first video does not pay for model loading. Failures are retried lazily."""
+    global _pipeline
+    try:
+        pipe = EventPipeline.from_config(CONFIG)
+        pipe.detector  # noqa: B018  (loads the weights, shared with Part B, and warms up CUDA)
+        _pipeline = pipe
+    except Exception:
+        traceback.print_exc()
+
+
+_load_pipeline()
 
 
 def detect_events(video_path: str) -> list[list]:

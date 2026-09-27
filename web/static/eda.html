@@ -23,21 +23,39 @@
   <div id="videos"></div>
 
   <h2>Findings that changed the design</h2>
+  <p>From the four organizer samples: one signalised Tashkent intersection, 4K at 29.97 fps, 10-bit XAVC, two clips
+    at noon and two at dusk (one close to night).</p>
   <ul>
-    <li><strong>Box bottoms are unreliable in dense traffic.</strong> In the shallow-angle city clip, closer vehicles cover
-      the bottom of farther ones, and the foot point jumps. Velocity is now taken from the box top, which is rarely
-      covered; the ground point is the top plus the track's median box height.</li>
-    <li><strong>Boxes cut by the frame border lie.</strong> A car entering from the bottom edge appeared to drive backwards
-      because its box bottom was pinned to the border. Border rows are excluded from kinematics.</li>
-    <li><strong>Tracks jump between vehicles.</strong> After two-second occlusions ByteTrack sometimes re-attached an ID
-      to another car across the frame. Tracks are now split at jumps faster than 20 body lengths per second.</li>
-    <li><strong>Noise differs per video.</strong> The 1-in-100 braking value in normal traffic is 1.3 BL/s&sup2; on the
-      highway and 6.4 BL/s&sup2; in the city clip. Near-miss and risk thresholds therefore scale with each video's own noise.</li>
-    <li><strong>Most missed vehicles were faint, not invisible.</strong> At 640 px the detector found 22 boxes in a busy
-      city frame, but only 5 were confident enough to start a track. Detecting at 960 px and starting tracks at 0.3
-      raised coverage from 4.5 to 23.8 tracked objects per frame.</li>
-    <li><strong>Lanes can be learned.</strong> Two directions of travel separate cleanly in the flow field, which lets
-      wrong-way detection run before anyone draws lanes.</li>
+    <li><strong>It is a busy junction, not a highway.</strong> 22 to 25 cars and 17 to 26 pedestrians are in view at any
+      moment; each five-minute clip has 360 to 430 car tracks and 500 to 830 pedestrian tracks. Pedestrian classes
+      (jaywalking, failure to yield) therefore matter as much as vehicle classes, and riders and passengers must be
+      told apart from pedestrians.</li>
+    <li><strong>The signal decides most events.</strong> Two signal heads are in view. The main approach sees reds of
+      about 40 s and greens of 7 to 20 s, so most vehicles in view are queued. Waiting in that queue is not a stopped
+      vehicle and not congestion, which is why both rules exclude learned signal-queue cells and red phases.</li>
+    <li><strong>Green ends with a flashing phase.</strong> The detected green splits into many short pieces separated by
+      "unknown" frames, consistent with the flashing green that ends each phase here. The signal state is therefore
+      smoothed over 1 s, and red-light running is only reported after a 0.5 s grace period on a steady red.</li>
+    <li><strong>4K decoding is the bottleneck, not the detector.</strong> Decoding every frame costs more than detecting
+      on a sample of them. Part A lets ffmpeg skip non-reference frames and downscale to 1920 px, while the
+      signal heads are cut out at full resolution so their lamps stay sharp.</li>
+    <li><strong>The camera moves between recordings.</strong> Against the frame the scene was drawn on, the clips are
+      shifted by 2 to 105 pixels (of 3840), enough to put a stop line on the wrong side of a car. The scene is drawn
+      once and aligned to every video by SIFT and a homography (280 inlier matches at dusk, up to 3,000 at noon);
+      if alignment fails, the drawn lines are dropped rather than trusted.</li>
+    <li><strong>Queues spill into the junction at noon.</strong> Vehicles wait past the stop line and inside the box,
+      which is exactly where stop-line violations happen, and also why the junction box is excluded from wrong-way
+      checks (turning cars cross the opposite lanes there).</li>
+  </ul>
+  <h3>Lessons from the development clips</h3>
+  <ul>
+    <li><strong>Box bottoms are unreliable in dense traffic.</strong> Closer vehicles cover the bottom of farther ones,
+      so velocity is taken from the box top; the ground point is the top plus the track's median box height.</li>
+    <li><strong>Boxes cut by the frame border lie.</strong> Border rows are excluded from kinematics.</li>
+    <li><strong>Tracks jump between vehicles after occlusions.</strong> Tracks are split at jumps faster than 20 body
+      lengths per second.</li>
+    <li><strong>Most missed vehicles were faint, not invisible.</strong> Detecting at 960 px and starting tracks at 0.3
+      raised coverage from 4.5 to 23.8 tracked objects per frame on a busy city clip.</li>
   </ul>
 </main>
 <footer id="site-footer"></footer>

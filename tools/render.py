@@ -43,9 +43,9 @@ def main(argv=None) -> int:
     ap.add_argument("--videos", default="data/samples")
     ap.add_argument("--out", default="web/static/media")
     ap.add_argument("--gt", default="data/dev_labels.json")
-    ap.add_argument("--width", type=int, default=960)
+    ap.add_argument("--width", type=int, default=768)
     ap.add_argument("--config", default="configs/default.yaml")
-    ap.add_argument("--every", type=int, default=2, help="write every Nth frame (site videos at fps / N)")
+    ap.add_argument("--every", type=int, default=3, help="write every Nth frame (site videos at fps / N)")
     ap.add_argument("--pred", default=None, help="reuse the risk curve of a run_submission.py output")
     args = ap.parse_args(argv)
     run = json.loads(Path(args.pred).read_text(encoding="utf-8")) if args.pred else {}
