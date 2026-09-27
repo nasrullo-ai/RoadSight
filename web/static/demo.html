@@ -15,7 +15,15 @@
 <main class="wrap">
   <h1>Live demo</h1>
   <p class="lede">Upload a road-camera video of up to two minutes and 100 MB. The server runs the same code as the
-    submission, on CPU with the small detector, so a two-minute clip takes a few minutes.</p>
+    submission and shows progress while it works; a two-minute clip takes one to a few minutes.</p>
+
+  <p id="server" class="ui muted">Checking the demo server.</p>
+  <div id="offline" class="alert" hidden>
+    <strong>The live demo server is offline right now.</strong> The website is hosted as static pages; the detector runs
+    on the team's GPU machine, which is switched on during judging sessions. Meanwhile, every sample video is analysed on the
+    <a href="results.html">Results</a> page, and the <a href="links.html">Links</a> page shows how to run the demo locally
+    (<code>make demo</code>).
+  </div>
 
   <form id="upload" class="ui">
     <label class="drop" id="drop" for="file">
@@ -56,13 +64,31 @@
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
-  const API = window.ROADSIGHT_API || "";
+  let API = window.ROADSIGHT_API || "";
+  let online = false;
   let file = null;
+
+  // The backend address lives in data/api.json so a static host can point at a separately running server.
+  (async () => {
+    try { const cfg = await RS.getJSON("data/api.json"); if (cfg && cfg.api) API = cfg.api.replace(/\/+$/, ""); } catch (e) { /* same origin */ }
+    try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 8000);
+      const r = await fetch(`${API}/api/health`, { cache: "no-store", signal: ctl.signal });
+      clearTimeout(timer);
+      const h = r.ok ? await r.json() : null;
+      online = !!(h && h.ok);
+    } catch (e) { online = false; }
+    $("server").textContent = online ? "Demo server online." : "";
+    $("server").hidden = !online;
+    $("offline").hidden = online;
+    $("upload").hidden = !online;
+  })();
 
   function pick(f) {
     file = f;
     $("chosen").textContent = f ? `${f.name}, ${(f.size / 1048576).toFixed(1)} MB` : "";
-    $("go").disabled = !f;
+    $("go").disabled = !f || !online;
     if (f && f.size > 100 * 1048576) { showError("The file is larger than 100 MB. Trim or compress it and choose it again."); $("go").disabled = true; }
     else hideError();
   }

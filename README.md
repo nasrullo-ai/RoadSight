@@ -7,7 +7,7 @@ accident risk score (Part B). Everything runs offline on one GPU; all weights ar
 - Interface: [`solution.py`](solution.py) (`CLASSES`, `detect_events`, `RiskEstimator`); all logic lives in [`roadsight/`](roadsight/).
 - Organizer files, unchanged: [`run_submission.py`](run_submission.py), [`evaluate.py`](evaluate.py), [`examples/`](examples/).
 - Output on the four sample videos: [`predictions_samples.json`](predictions_samples.json).
-- Website with the live demo: [`web/`](web/) (deployment below). Task statement: [`task.txt`](task.txt); design notes: [`SPEC.md`](SPEC.md).
+- Website with the live demo: **https://nasrulloai-roadsight.static.hf.space** (source in [`web/`](web/), hosting below). Task statement: [`task.txt`](task.txt); design notes: [`SPEC.md`](SPEC.md).
 
 ## Install and run
 
@@ -176,14 +176,24 @@ all four samples (1.75x to 1.98x the video length on the RTX 3050 laptop GPU).
 
 ## Website and live demo
 
-`make demo` serves the website and the demo API on http://localhost:7860 (FastAPI, `web/app.py`):
-`POST /api/analyze`, `GET /api/status/{id}`, `GET /api/result/{id}`, `GET /api/video/{id}`, `GET /api/json/{id}`.
-Uploads are limited to 2 minutes and 100 MB and run one at a time on CPU. `python tools/make_space.py`
-assembles a Hugging Face Docker Space in `build/space/` (instructions printed at the end).
+Website: **https://nasrulloai-roadsight.static.hf.space** (Hugging Face Static Space
+[NasrulloAi/roadsight](https://huggingface.co/spaces/NasrulloAi/roadsight)). Pages: Home, Approach, Data (EDA), Results
+(every sample annotated, event timeline, risk curve, one example of each detected class, failure cases), Live demo,
+Report, Team, Links.
 
-Pages: Home, Approach, Data (EDA), Results (every sample annotated, event timeline, risk curve, failure
-cases), Live demo, Report, Team, Links. Refresh the sample renders with
-`make render` (annotated videos, timelines and one example per class, reusing the risk curves in `predictions_samples.json`) and the EDA with `make eda`.
+The pages are static files; the live demo needs the detector, which runs on the team's GPU machine: 
+`powershell -ExecutionPolicy Bypass -File tools\start_demo.ps1` starts the FastAPI backend (`web/app.py`, the same
+code and weights as the submission) and a Cloudflare quick tunnel, and writes the tunnel address to the Space's
+`data/api.json`. The Demo page reads that address, checks `/api/health`, and tells visitors when the demo server is
+offline instead of failing. API: `POST /api/analyze`, `GET /api/status/{id}`, `GET /api/result/{id}`,
+`GET /api/video/{id}`, `GET /api/json/{id}`; uploads up to 2 minutes and 100 MB, one at a time.
+
+- Local: `make demo` serves the whole site and the demo on http://localhost:7860.
+- Static site: `python tools/make_static_site.py` assembles `build/static-site/` (push it to the Space).
+- Self-contained alternative: `python tools/make_space.py` assembles a Docker Space with a CPU backend in `build/space/`
+  (Hugging Face now requires a paid plan for Docker Spaces).
+- Refresh the sample renders with `make render` (annotated videos, timelines and one example per class, reusing the risk
+  curves in `predictions_samples.json`) and the EDA with `make eda`.
 
 ## Development workflow
 

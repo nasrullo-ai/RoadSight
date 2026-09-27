@@ -1,4 +1,5 @@
 {
   "repo": "https://github.com/nasrullo-ai/RoadSight",
-  "weights": "https://github.com/nasrullo-ai/RoadSight/tree/main/weights"
+  "weights": "https://github.com/nasrullo-ai/RoadSight/tree/main/weights",
+  "site": "https://nasrulloai-roadsight.static.hf.space"
 }
