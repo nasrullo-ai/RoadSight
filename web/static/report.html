@@ -13,9 +13,11 @@
 <header id="site-header"></header>
 <main class="wrap">
   <h1>Technical report</h1>
-  <p class="lede">We built a detector-plus-rules system that runs fully offline, produces valid, deterministic output
-    for every video and stays at 0.7x to 1.0x real time for both parts on a laptop GPU. The weak point is signal-dependent
-    classes and near misses, which we gate conservatively rather than guess.</p>
+  <p class="lede">We built a detector-plus-rules system that runs fully offline and produces valid, deterministic
+    output for every video, inside the 3x time budget on a 4 GB laptop GPU. On the four organizer samples it finds
+    red-light runs, stop-line violations, stopped vehicles and vehicles not yielding at the crossings; we checked
+    every class by eye. Part B never raises a false alarm on the samples, but we had no accident footage to
+    calibrate its early warning against.</p>
 
   <h2>What we built</h2>
   <p>A YOLO11m detector and ByteTrack produce tracks; kinematics turn them into speeds normalised by vehicle size;
@@ -24,6 +26,26 @@
     wrong-way motion and pedestrian conflicts in a logistic score. The scene (lanes, stop lines, crosswalks, zones)
     is drawn once in <code>scene.json</code>; where it is missing, the road surface, lane flow and busy crossing points are
     learned from each video's own tracks.</p>
+
+  <h2>On the organizer samples</h2>
+  <p>The samples show one signalised Tashkent intersection at noon and at dusk. We drew the scene once
+    (carriageway, stop line, three crossings, two signal heads, the junction box) on one frame; every video is
+    aligned to that drawing by SIFT and a RANSAC homography, so a slightly moved camera does not move the lines.
+    There are no labels, so we reviewed our own predictions frame by frame: start, middle and end frames with the
+    involved tracks highlighted.</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Class</th><th class="num">Reviewed</th><th class="num">Correct</th><th class="num">Unclear</th><th class="num">Wrong</th><th>What we changed</th></tr></thead>
+    <tbody>
+      <tr><td>red light</td><td class="num">3</td><td class="num">3</td><td class="num">0</td><td class="num">0</td><td>nothing</td></tr>
+      <tr><td>stop line</td><td class="num">3</td><td class="num">2</td><td class="num">1</td><td class="num">0</td><td>nothing</td></tr>
+      <tr><td>stopped vehicle</td><td class="num">2</td><td class="num">2</td><td class="num">0</td><td class="num">0</td><td>nothing</td></tr>
+      <tr><td>failure to yield</td><td class="num">4</td><td class="num">3</td><td class="num">1</td><td class="num">0</td><td>segments now run from "vehicle enters the crossing" to "leaves it" (were 0.3 to 1 s, now 0.7 to 4.5 s)</td></tr>
+      <tr><td>near miss</td><td class="num">2</td><td class="num">0</td><td class="num">1</td><td class="num">1</td><td>a pair now needs a motor vehicle (two pedestrians had been flagged)</td></tr>
+      <tr><td>jaywalking</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">1</td><td>a jaywalker must walk 1.5 body lengths on the road (a person waiting at the kerb had been flagged)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">This measures precision only. Nobody watched the full 18 minutes for missed events, so recall
+    is unknown; <code>data/review_samples.json</code> in the repository lists every verdict.</p>
 
   <h2>What worked</h2>
   <ul>
@@ -40,8 +62,8 @@
   </ul>
 
   <h2>Ablations</h2>
-  <p>Measured on two public traffic clips with no labelled events (a 4K highway clip and a 1080p city underpass),
-    so every event or alarm there is a false positive.</p>
+  <p>Measured during development on two public traffic clips with no events (a 4K highway clip and a 1080p city
+    underpass), so every event or alarm there is a false positive.</p>
   <h3>Kinematic noise</h3>
   <div class="table-scroll"><table>
     <thead><tr><th>Change</th><th>Measure</th><th class="num">Highway</th><th class="num">City</th></tr></thead>
@@ -79,8 +101,9 @@
     <thead><tr><th>Clip</th><th class="num">Length</th><th class="num">Part A</th><th class="num">Part B</th><th class="num">Both / length</th></tr></thead>
     <tbody id="timing"><tr><td colspan="5" class="muted">Loading.</td></tr></tbody>
   </table></div>
-  <p class="muted">RTX 4050 laptop GPU (6 GB), YOLO11m FP16 at 960 px for events (stride 2) and 640 px for risk
-    (stride 3). Part B averages 5 to 9 ms per frame. The limit is 3x the video length.</p>
+  <p class="muted">The organizer's harness on an RTX 3050 laptop GPU (4 GB). YOLO11m FP16 at 960 px for events
+    (~12.5 frames per second of video) and 640 px for risk (~8 per second). Most of Part B is the harness decoding every
+    4K 10-bit frame. The limit is 3x the video length.</p>
 
   <h2>What did not work</h2>
   <ul>
@@ -95,7 +118,8 @@
 
   <h2>Next steps</h2>
   <ul>
-    <li>Label the organizer samples, draw <code>scene.json</code> for the camera and run <code>tools/tune.py</code> to set per-class thresholds and boundary offsets.</li>
+    <li>Label the organizer samples end to end (recall, not just precision) and run <code>tools/tune.py</code> to set per-class thresholds and boundary offsets.</li>
+    <li>Congestion: the samples show queues spilling into the junction, which the congestion rule (a whole direction at a standstill for 15 s through a green phase) never reported. It needs labelled examples to calibrate.</li>
     <li>Fit the risk weights on labelled pre-accident windows with <code>tools/fit_risk.py</code>.</li>
     <li>Fine-tune the detector on CCTV viewpoints (UA-DETRAC) if small or night vehicles are missed.</li>
   </ul>

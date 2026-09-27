@@ -27,6 +27,7 @@ from roadsight import CLASSES  # noqa: E402
 from roadsight.config import deep_update, load_config  # noqa: E402
 from roadsight.events.base import RULES  # noqa: E402
 from roadsight.events.postprocess import postprocess  # noqa: E402
+from roadsight.labels import load_gt  # noqa: E402
 from roadsight.pipeline import EventPipeline  # noqa: E402
 
 GRIDS = {
@@ -45,13 +46,13 @@ def class_f1(pred_by_video: dict, gt: dict, label: str) -> tuple[float, float, i
     """Mean F1 over tIoU {.3,.5,.7}, precision at .3, #pred, #gt for one class."""
     f1s, prec03 = [], 0.0
     n_pred = sum(len([e for e in v if e[2] == label]) for v in pred_by_video.values())
-    n_gt = sum(len([e for e in g.get("events", []) if e[2] == label]) for g in gt["videos"].values())
+    n_gt = sum(len([e for e in g.get("events", []) if e[2] == label]) for g in gt.values())
     for thr in evaluate.TIOU_THRESHOLDS:
         tp = 0
-        for vid, g in gt["videos"].items():
+        for vid, g in gt.items():
             gs = [(e[0], e[1]) for e in g.get("events", []) if e[2] == label]
             ps = [(e[0], e[1]) for e in pred_by_video.get(vid, []) if e[2] == label]
-            tp += evaluate.match_count(gs, ps, thr)
+            tp += evaluate.match_segments(gs, ps, thr)[0]
         p = tp / n_pred if n_pred else 0.0
         r = tp / n_gt if n_gt else 0.0
         f1s.append(2 * p * r / (p + r) if p + r else 0.0)
@@ -62,7 +63,7 @@ def class_f1(pred_by_video: dict, gt: dict, label: str) -> tuple[float, float, i
 
 def boundary_offsets(pred_by_video: dict, gt: dict, label: str) -> tuple[float, float]:
     ds, de = [], []
-    for vid, g in gt["videos"].items():
+    for vid, g in gt.items():
         gs = [e for e in g.get("events", []) if e[2] == label]
         ps = [e for e in pred_by_video.get(vid, []) if e[2] == label]
         for ge in gs:
@@ -95,16 +96,16 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     os.environ.setdefault("ROADSIGHT_CACHE_DIR", str(ROOT / ".cache"))
 
-    gt = json.loads(Path(args.gt).read_text(encoding="utf-8"))
+    gt = load_gt(args.gt)
     base = load_config(args.config)
     base["overrides_file"] = None
     pipe = EventPipeline(base)
     results = {}
-    for vid in sorted(gt["videos"]):
+    for vid in sorted(gt):
         path = Path(args.videos) / vid
         if path.exists():
             results[vid] = pipe.run_full(str(path))
-    gt = {"videos": {k: v for k, v in gt["videos"].items() if k in results}}
+    gt = {k: v for k, v in gt.items() if k in results}
     if not results:
         print("no dev videos found", file=sys.stderr)
         return 1

@@ -20,8 +20,8 @@
   <h2>Reproduce the sample predictions</h2>
   <p>On a machine with Python 3.10+ and an NVIDIA GPU:</p>
   <pre class="panel ui" style="overflow-x:auto">pip install -r requirements.txt
-python run_submission.py --videos data/samples --out outputs/predictions_samples.json
-python evaluate.py --pred outputs/predictions_samples.json --validate-only</pre>
+python run_submission.py --videos data/samples --out predictions_samples.json
+python evaluate.py --pred predictions_samples.json --validate-only</pre>
   <p>Or without installing anything but Docker:</p>
   <pre class="panel ui" style="overflow-x:auto">docker build -t roadsight .
 docker run --gpus all --network none -v $PWD/data/samples:/videos -v $PWD/outputs:/out roadsight</pre>

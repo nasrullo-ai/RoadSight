@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from roadsight.events.base import EventRule, Segment, register, runs_min_duration
+from roadsight.scene.geometry import points_in_polygon
 
 
 @register
@@ -74,8 +75,27 @@ class FailureToYield(EventRule):
                     if self._conflict(
                         walkers, fr[s : e + 1], x[s : e + 1], y[s : e + 1], vx[s : e + 1], vy[s : e + 1], scale[s : e + 1], c, near_bl
                     ):
-                        out.append(Segment(float(t[s]), float(t[e]), self.label, conf, {"tracks": [int(tid)], "crosswalk": int(c)}))
+                        a, b = (s, e) if not drawn else self._on_crossing(g, self.scene.crosswalks[c], s, e)
+                        b = min(b, int(np.searchsorted(t, t[a] + max_len, side="right")) - 1)
+                        out.append(Segment(float(t[a]), float(t[b]), self.label, conf, {"tracks": [int(tid)], "crosswalk": int(c)}))
         return out
+
+    @staticmethod
+    def _on_crossing(g, polygon, s: int, e: int, frac: float = 0.35) -> tuple[int, int]:
+        """Widen [s, e] to the rows where any part of the vehicle's ground footprint touches the crossing,
+        so the segment runs from "vehicle enters the crossing" to "vehicle leaves the crossing"."""
+        x1, x2, y2 = g["x1"].to_numpy(), g["x2"].to_numpy(), g["y2"].to_numpy()
+        top = y2 - frac * (y2 - g["y1"].to_numpy())
+        touch = np.zeros(len(g), dtype=bool)
+        for px in (x1, (x1 + x2) / 2, x2):
+            for py in (top, y2):
+                touch |= points_in_polygon(px, py, polygon)
+        touch[s : e + 1] = True
+        while s > 0 and touch[s - 1]:
+            s -= 1
+        while e < len(g) - 1 and touch[e + 1]:
+            e += 1
+        return s, e
 
     def cw_index(self, x, y, drawn: bool) -> np.ndarray:
         if drawn:

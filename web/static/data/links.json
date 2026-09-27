@@ -1,4 +1,4 @@
 {
-  "repo": "",
-  "weights": ""
+  "repo": "https://github.com/nasrullo-ai/RoadSight",
+  "weights": "https://github.com/nasrullo-ai/RoadSight/tree/main/weights"
 }

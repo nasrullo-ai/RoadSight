@@ -117,6 +117,7 @@ events:
     vehicle_exit_bl: 2.0
     min_depth_bl: 1.0           # must get at least one body length into the road
     min_size_frac: 0.03         # ignore far-field and cut-off people
+    min_move_bl: 1.5            # must walk at least this far while on the road (people waiting at the kerb stand still)
     walk_speed_max: 3.0
   wrong_way:
     enabled: true
@@ -166,6 +167,7 @@ events:
     min_speed: 0.5
     min_closing_bl: 1.0
     min_hits: 2
+    motor_classes: [2, 3, 5, 7] # a pair needs at least one motor vehicle
     min_size_frac: 0.05           # far-field boxes are too noisy for time to collision
     min_track_sec: 1.5          # both tracks must be established, not a fresh or broken ID
     max_plausible_speed_bl: 8.0 # faster than this around the conflict = tracking artefact

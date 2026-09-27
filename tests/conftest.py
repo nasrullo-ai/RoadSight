@@ -12,7 +12,7 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 from synth import write_video  # noqa: E402
 
-SAMPLES = sorted((ROOT / "data" / "samples").glob("*.mp4"))
+SAMPLES = sorted(p for p in (ROOT / "data" / "samples").glob("*") if p.suffix.lower() == ".mp4")
 
 
 @pytest.fixture(scope="session")

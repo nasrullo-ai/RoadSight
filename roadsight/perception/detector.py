@@ -73,18 +73,29 @@ class Detector:
         out: list[np.ndarray] = []
         for i in range(0, len(frames), self.batch):
             chunk = frames[i : i + self.batch]
-            results = self.model.predict(
-                chunk,
-                imgsz=self.imgsz,
-                conf=self.conf,
-                iou=self.iou,
-                classes=self.classes,
-                half=self.half,
-                device=self.device,
-                batch=len(chunk),
-                verbose=False,
-            )
+            try:
+                results = self._predict(chunk)
+            except Exception as exc:
+                if self.device == "cpu":
+                    raise
+                # A broken CUDA stack (e.g. CPU-only torchvision NMS) would otherwise empty every video.
+                log.error("GPU inference failed (%r); falling back to CPU", exc)
+                self.device, self.half = "cpu", False
+                results = self._predict(chunk)
             for r in results:
                 data = r.boxes.data
                 out.append(data.float().cpu().numpy()[:, :6] if len(data) else np.zeros((0, 6), dtype=np.float32))
         return out
+
+    def _predict(self, chunk):
+        return self.model.predict(
+            chunk,
+            imgsz=self.imgsz,
+            conf=self.conf,
+            iou=self.iou,
+            classes=self.classes,
+            half=self.half,
+            device=self.device,
+            batch=len(chunk),
+            verbose=False,
+        )

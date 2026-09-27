@@ -70,13 +70,15 @@ def main() -> int:
     shutil.copytree(ROOT / "roadsight", OUT / "roadsight", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(ROOT / "web", OUT / "web", ignore=shutil.ignore_patterns("__pycache__", "jobs"))
     (OUT / "configs").mkdir()
-    for f in ("default.yaml", "scene.json", "tuned.yaml"):
+    # scene_ref.jpg lets uploads from other cameras fail alignment and fall back to the learned scene.
+    for f in ("default.yaml", "scene.json", "scene_ref.jpg", "tuned.yaml"):
         if (ROOT / "configs" / f).exists():
             shutil.copy2(ROOT / "configs" / f, OUT / "configs" / f)
     (OUT / "weights").mkdir()
     for f in ("yolo11n.pt", "risk.json"):
         shutil.copy2(ROOT / "weights" / f, OUT / "weights" / f)
     shutil.copy2(ROOT / "solution.py", OUT / "solution.py")
+    shutil.copy2(ROOT / "predictions_samples.json", OUT / "web" / "static" / "data" / "predictions_samples.json")
     (OUT / "Dockerfile").write_text(DOCKERFILE, encoding="utf-8")
     (OUT / "requirements-space.txt").write_text(REQUIREMENTS, encoding="utf-8")
     (OUT / "README.md").write_text(README, encoding="utf-8")

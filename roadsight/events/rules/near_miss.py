@@ -34,6 +34,7 @@ class NearMiss(EventRule):
         max_speed = self.p("max_plausible_speed_bl", 8.0)
         min_real = self.p("min_real_frac", 0.7)
         brake_drop = self.p("brake_drop_ratio", 0.6)
+        motor_cls = tuple(self.p("motor_classes", [2, 3, 5, 7]))
 
         users = tracks.of_kind("road_user", reliable=True)
         users = users[((users["cls"] != 0) | users["rider"] | (users["speed"] > 0.2)) & (users["size"] >= min_size) & ~users["edge"]]
@@ -70,6 +71,11 @@ class NearMiss(EventRule):
             if len(pairs) == 0:
                 continue
             pairs = pairs[(sp[pairs[:, 0]] > min_speed) | (sp[pairs[:, 1]] > min_speed)]
+            # At least one motor vehicle: two pedestrians walking side by side on a crossing are not a near miss.
+            motor = g["cls"].isin(motor_cls).to_numpy()
+            pairs = pairs[motor[pairs[:, 0]] | motor[pairs[:, 1]]]
+            if len(pairs) == 0:
+                continue
             vx, vy = g["vx"].to_numpy(), g["vy"].to_numpy()
             i, j = pairs[:, 0], pairs[:, 1]
             dx, dy = x[j] - x[i], y[j] - y[i]

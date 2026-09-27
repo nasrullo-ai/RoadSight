@@ -120,6 +120,8 @@ def test_failure_to_yield():
     a = car(piecewise([(0, 100, 440), (8, 1200, 440)]))  # reaches the zebra as the walker is in its lane
     segs = run("failure_to_yield", make_tracks([(1, 2, a, 0, 8), (2, 0, person, 0, 8)], 10), road_scene(crosswalks=cw), duration=10)
     assert len(segs) == 1
+    # "Vehicle enters the crossing -> leaves it": the whole car footprint (80 px) over the 100 px zebra at ~137 px/s.
+    assert 1.0 <= segs[0].end - segs[0].start <= 1.8
 
 
 def test_waiting_pedestrian_is_not_failure_to_yield():
@@ -172,3 +174,16 @@ def test_steady_following_is_not_near_miss():
     a = car(piecewise([(0, 40, 420), (12, 1000, 420)]))
     b = car(piecewise([(0, 300, 420), (12, 1260, 420)]))
     assert run("near_miss", make_tracks([(1, 2, a, 0, 12), (2, 2, b, 0, 12)], 12), duration=12) == []
+
+
+def test_person_standing_on_the_road_edge_is_not_jaywalking():
+    # Waits 8 s just inside the carriageway, barely moving (seen at the far kerb of the organizer camera).
+    person = lambda t: (*piecewise([(1, 640, 330), (9, 655, 335)])(t), 30.0, 80.0)  # noqa: E731
+    assert run("jaywalking", make_tracks([(1, 0, person, 1, 9)], 10), duration=10) == []
+
+
+def test_two_pedestrians_side_by_side_are_not_a_near_miss():
+    # Two people walk towards each other on a crossing and step aside: no motor vehicle, no near miss.
+    a = lambda t: (*piecewise([(0, 300, 420), (3.9, 620, 420), (4.2, 625, 440), (8, 640, 440)])(t), 30.0, 80.0)  # noqa: E731
+    b = lambda t: (*piecewise([(0, 900, 420), (8, 660, 420)])(t), 30.0, 80.0)  # noqa: E731
+    assert run("near_miss", make_tracks([(1, 0, a, 0, 8), (2, 0, b, 0, 8)], 10), duration=10) == []

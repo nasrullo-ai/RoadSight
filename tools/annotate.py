@@ -19,17 +19,18 @@ import cv2
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from roadsight import CLASSES  # noqa: E402
+from roadsight.labels import load_gt  # noqa: E402
 
 KEYS = "123456789abcde"
 
 
 def load(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"videos": {}}
+    return load_gt(path)
 
 
 def save(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    for v in data["videos"].values():
+    for v in data.values():
         v["events"].sort(key=lambda e: (e[0], e[2]))
     path.write_text(json.dumps(data, indent=1), encoding="utf-8")
     print(f"saved {path}")
@@ -46,7 +47,7 @@ def main(argv=None) -> int:
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     name = Path(args.video).name
-    entry = data["videos"].setdefault(name, {"duration": round(n / fps, 3), "fps": fps, "events": []})
+    entry = data.setdefault(name, {"duration": round(n / fps, 3), "fps": fps, "events": []})
     idx, playing, start, pending = 0, False, None, None
     win = "annotate"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)

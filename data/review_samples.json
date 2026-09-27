@@ -1,0 +1,21 @@
+{
+ "method": "Precision check, not ground truth: predicted events on the organizer samples were viewed as start / middle / end frames with the involved tracks highlighted (tools/review.py) and judged against the task's class definitions. Recall is not measured: nobody watched the full videos for missed events.",
+ "reviewed": [
+  {"video": "C3896.MP4", "t": 78.65, "label": "red_light", "verdict": "correct", "note": "white SUV crosses the stop line and the crossing while both vehicle heads are red"},
+  {"video": "C3896.MP4", "t": 59.83, "label": "stop_line", "verdict": "unclear", "note": "car just past the drawn line inside a queue spilling into the junction; the governing head reads green at the start"},
+  {"video": "C3896.MP4", "t": 297.86, "label": "stop_line", "verdict": "correct", "note": "car waits past the stop line, ahead of the queue, through a whole red phase"},
+  {"video": "C3896.MP4", "t": 187.35, "label": "stopped_vehicle", "verdict": "correct", "note": "car standing at the far kerb for 31 s while 27 vehicles pass"},
+  {"video": "C3897.MP4", "t": 56.72, "label": "red_light", "verdict": "correct", "note": "bus leaves the queue and turns through the junction on red"},
+  {"video": "C3897.MP4", "t": 177.44, "label": "failure_to_yield", "verdict": "correct", "note": "SUV turns across the lower-left crossing just in front of a walking pedestrian"},
+  {"video": "C3902.MP4", "t": 155.72, "label": "red_light", "verdict": "correct", "note": "car crosses the stop line at speed on red and drives through the empty junction"},
+  {"video": "C3902.MP4", "t": 23.69, "label": "failure_to_yield", "verdict": "unclear", "note": "car crosses the far end of the upper crossing while people walk about two car lengths away"},
+  {"video": "C3902.MP4", "t": 268.33, "label": "failure_to_yield", "verdict": "correct", "note": "car drives through the right end of the upper crossing while pedestrians cross on their green"},
+  {"video": "C3902.MP4", "t": 13.18, "label": "near_miss", "verdict": "wrong", "note": "two pedestrians walking side by side; fixed: a near miss now needs a motor vehicle in the pair"},
+  {"video": "C3902.MP4", "t": 13.28, "label": "near_miss", "verdict": "unclear", "note": "car cuts across the upper crossing in front of a pedestrian who checks his step"},
+  {"video": "C3902.MP4", "t": 166.13, "label": "jaywalking", "verdict": "wrong", "note": "person standing at the far kerb for 7 s; fixed: a jaywalker must walk at least 1.5 body lengths on the road"},
+  {"video": "C3905.MP4", "t": 39.51, "label": "failure_to_yield", "verdict": "correct", "note": "car turns across the lower crossing right beside a walking pedestrian"},
+  {"video": "C3905.MP4", "t": 31.4, "label": "stopped_vehicle", "verdict": "correct", "note": "car standing at the far kerb for 96 s while 53 vehicles pass"},
+  {"video": "C3905.MP4", "t": 77.24, "label": "stop_line", "verdict": "correct", "note": "van waits past the stop line through the red phase until green"}
+ ],
+ "boundary_fix": "failure_to_yield segments were 0.3-1.0 s (foot point on the zebra). They now span 'vehicle enters the crossing' to 'vehicle leaves it' (any part of the ground footprint on the zebra), 0.7-4.5 s on the samples."
+}

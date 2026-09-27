@@ -53,6 +53,8 @@
     <td class="num">${x.speed_bl_s.p50} BL/s</td></tr>`).join("")}</tbody></table>`;
   $("videos").innerHTML = v.map((x, i) => `<section><h2>${RS.esc(x.video)}</h2>
       <h3>Road users in view, per second</h3><div id="counts-${i}"></div>
+      ${x.signal_phases ? `<p class="ui">Signal cycle (mean phase length): ${Object.entries(x.signal_phases).map(([sid, ph]) =>
+        `${RS.esc(sid)}: ${Object.entries(ph).filter(([st]) => st !== "unknown").map(([st, p]) => `${RS.esc(st)} ${p.mean_sec} s`).join(", ")}`).join("; ")}</p>` : ""}
       <div class="cols">
         <figure><img src="eda/${x.images.heatmap}" alt="Where road users were, as a heatmap" loading="lazy"><figcaption>Where road users stand and drive.</figcaption></figure>
         <figure><img src="eda/${x.images.trajectories}" alt="Trajectories coloured by direction" loading="lazy"><figcaption>Trajectories, coloured by direction of travel.</figcaption></figure>

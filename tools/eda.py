@@ -54,7 +54,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     pipe = EventPipeline.from_config(args.config)
     report = {"videos": []}
-    for path in sorted(Path(args.videos).glob("*.mp4")):
+    for path in sorted(p for p in Path(args.videos).iterdir() if p.suffix.lower() == ".mp4"):
         res = pipe.run_full(str(path))
         df = res.tracks.df
         meta = res.meta
@@ -80,6 +80,14 @@ def main(argv=None) -> int:
         }
         entry["speed_hist"] = np.histogram(mv["speed"].clip(0, 8), bins=16, range=(0, 8))[0].tolist() if len(mv) else []
         entry["events"] = res.events
+        # Signal cycle: mean length of each phase per head (drives the red-light, stop-line and congestion rules).
+        phases = {}
+        for sid, segs in res.signal.segments.items():
+            per = {}
+            for t0, t1, st in segs[1:-1]:  # first and last phases are cut by the clip
+                per.setdefault(st, []).append(t1 - t0)
+            phases[sid] = {st: {"mean_sec": round(float(np.mean(v)), 1), "n": len(v)} for st, v in sorted(per.items())}
+        entry["signal_phases"] = phases
 
         bg = cv2.cvtColor(frame0, cv2.COLOR_BGR2RGB) if frame0 is not None else np.zeros((meta.height, meta.width, 3), np.uint8)
         # Motion heatmap.

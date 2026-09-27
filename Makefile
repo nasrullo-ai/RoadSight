@@ -1,6 +1,6 @@
 PY ?= python
 VIDEOS ?= data/samples
-PRED ?= outputs/predictions_samples.json
+PRED ?= predictions_samples.json
 GT ?= data/dev_labels.json
 
 .PHONY: setup run eval validate test lint format demo render eda tune docker
@@ -9,13 +9,13 @@ setup:            ## install runtime + dev dependencies
 	$(PY) -m pip install -r requirements-dev.txt
 
 run:              ## run the harness on the sample videos
-	$(PY) run_submission.py --videos $(VIDEOS) --out $(PRED)
+	$(PY) run_submission.py --videos $(VIDEOS) --out $(PRED) --team roadsight
 
 validate:         ## format check only
 	$(PY) evaluate.py --pred $(PRED) --validate-only
 
 eval: validate    ## score against our dev labels
-	$(PY) evaluate.py --pred $(PRED) --gt $(GT)
+	$(PY) evaluate.py --pred $(PRED) --gt $(GT) --per-video
 
 test:             ## pytest: interface, format, determinism, causality, offline, rules
 	$(PY) -m pytest tests -q

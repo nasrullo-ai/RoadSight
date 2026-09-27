@@ -1,15 +1,12 @@
 {
- "note": "Dev labels. vehicles*.mp4 are public test clips with no labelled events (every prediction on them is a false positive). Add organizer samples with tools/annotate.py.",
- "videos": {
-  "vehicles.mp4": {
-   "duration": 21.52,
-   "fps": 25.0,
-   "events": []
-  },
-  "vehicles-2.mp4": {
-   "duration": 42.543,
-   "fps": 29.97002997002997,
-   "events": []
-  }
+ "vehicles.mp4": {
+  "duration": 21.52,
+  "fps": 25.0,
+  "events": []
+ },
+ "vehicles-2.mp4": {
+  "duration": 42.543,
+  "fps": 29.97002997002997,
+  "events": []
  }
 }

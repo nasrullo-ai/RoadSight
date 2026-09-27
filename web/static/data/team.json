@@ -1,8 +1,8 @@
 [
   {
-    "name": "Nasrullo",
-    "role": "Team lead, perception and rules",
-    "contributions": "Specification, detector and tracker integration, Tier 1 event rules.",
+    "name": "Nasrullo Nutfulloyev",
+    "role": "Team lead, perception and event rules",
+    "contributions": "Specification, detector and tracker integration, scene alignment, the 14 event rules.",
     "past": "",
     "photo": "",
     "github": "",
@@ -10,9 +10,9 @@
     "portfolio": ""
   },
   {
-    "name": "Team member 2",
+    "name": "Gulasal Abduraximova",
     "role": "Risk model and evaluation",
-    "contributions": "Causal risk estimator, dev labels, threshold tuning.",
+    "contributions": "Causal risk estimator (Part B), dev-set review of the sample videos, threshold tuning.",
     "past": "",
     "photo": "",
     "github": "",
@@ -20,9 +20,9 @@
     "portfolio": ""
   },
   {
-    "name": "Team member 3",
+    "name": "Gulzoda Muhammadova",
     "role": "Website and demo",
-    "contributions": "Website, live demo backend, EDA and annotated renders.",
+    "contributions": "Website, live demo backend, EDA and annotated renders of the sample videos.",
     "past": "",
     "photo": "",
     "github": "",

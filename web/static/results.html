@@ -36,6 +36,13 @@
 
   <h2>Failure cases we know about</h2>
   <ul>
+    <li>Two people walking side by side on a crossing were flagged as a near miss (C3902, 13 s), and a person waiting at
+      the far kerb for 7 s as jaywalking (C3902, 166 s). Both rules were fixed: a near miss needs a motor vehicle, a
+      jaywalker must walk at least 1.5 body lengths on the road.</li>
+    <li>Queues regularly spill past the stop line into the junction at noon. A car caught in such a queue can be
+      reported as a stop-line violation while its own signal has already turned green (C3896, 60 s).</li>
+    <li>Far-field pedestrians at the opposite kerb are small (under 3% of the frame height); the rules ignore them,
+      so events on the far side of the road are missed.</li>
     <li>Dense, shallow-angle traffic: closer vehicles hide the bottom of farther ones, so box bottoms jump. We take
       velocity from the box top, which cut 1-in-1000 acceleration spikes from 4.1 to 1.6 body lengths/s&sup2; on the highway clip,
       but near-miss candidates in stop-and-go traffic still reach 0.63 confidence against a 0.70 gate.</li>

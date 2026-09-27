@@ -63,8 +63,11 @@ def render_video(
     width: int = 960,
     progress: Callable[[float], None] | None = None,
     max_seconds: float | None = None,
+    every: int = 1,
 ) -> Path:
-    """Draw tracks, scene overlay, active events and the risk score onto every processed frame."""
+    """Draw tracks, scene overlay, active events and the risk score onto every ``every``-th frame
+    (the output plays at ``fps / every``; skipped frames are grabbed, not decoded)."""
+    every = max(1, int(every))
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     meta = result.meta
@@ -80,12 +83,21 @@ def render_video(
 
     cap = cv2.VideoCapture(video_path)
     fps = meta.fps
-    write, close = _writer(out_path, fps, (width, height))
+    write, close = _writer(out_path, fps / every, (width, height))
     n_total = meta.n_frames or 1
     last_boxes = None
+    fresh = False  # new boxes since the last written frame
     idx = 0
     try:
         while True:
+            if idx % every:
+                if not cap.grab():
+                    break
+                g = by_frame.get(idx)
+                if g is not None:
+                    last_boxes, fresh = g, True
+                idx += 1
+                continue
             ok, frame = cap.read()
             if not ok or (max_seconds and idx / fps > max_seconds):
                 break
@@ -95,9 +107,10 @@ def render_video(
                 img = cv2.addWeighted(img, 1.0, overlay, 0.35, 0)
             g = by_frame.get(idx)
             if g is not None:
-                last_boxes = g
+                last_boxes, fresh = g, True
             if last_boxes is not None and abs(float(last_boxes["t"].iloc[0]) - t) < 0.3:
-                _draw_tracks(img, last_boxes, scale, trails, update=g is not None)
+                _draw_tracks(img, last_boxes, scale, trails, update=fresh)
+            fresh = False
             active = [e for e in events if e[0] <= t <= e[1]]
             _draw_banner(img, t, active, risk_arr)
             write(img)

@@ -1,4 +1,5 @@
 .venv/
+.venv-*/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -9,6 +10,7 @@ runs/
 
 # Sample videos are large and not ours to redistribute
 data/samples/*
+data/dev_clips/
 !data/samples/README.md
 
 # Demo job scratch space
@@ -16,7 +18,6 @@ web/jobs/
 
 # Local scratch
 outputs/*
-!outputs/predictions_samples.json
 *.log
 
 # Hugging Face Space build output
@@ -33,3 +34,6 @@ web/static/eda/
 data/test4/
 *.MP4
 *.MP4.part
+
+# Organizer starter kit as delivered (the files in use are copied to the repo root unchanged)
+starter_kit/

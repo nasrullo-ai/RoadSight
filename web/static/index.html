@@ -70,7 +70,7 @@
     el.innerHTML = `<table><thead><tr><th>Video</th><th class="num">Length</th><th class="num">Events</th><th class="num">Wall time / video length</th></tr></thead><tbody>
       ${rows.map((r) => `<tr><td><a href="results.html#${encodeURIComponent(r.stem)}">${RS.esc(r.video)}</a></td><td class="num">${r.duration.toFixed(1)} s</td>
       <td class="num">${r.events}</td><td class="num">${r.rtf.toFixed(2)}x</td></tr>`).join("")}</tbody></table>
-      <p class="muted">Wall time covers both parts (events and per-frame risk) on an RTX 4050 laptop GPU; the limit is 3x.</p>`;
+      <p class="muted">Wall time covers both parts (events and per-frame risk) with the organizer's harness on an RTX 3050 laptop GPU (4 GB); the limit is 3x.</p>`;
   }).catch(() => { document.getElementById("samples").innerHTML = '<p class="muted ui">Sample results are not published yet.</p>'; });
 </script>
 </body>

@@ -66,12 +66,17 @@ class Jaywalking(EventRule):
         out = []
         tids = ped["track_id"].to_numpy()
         t_all = ped["t"].to_numpy()
+        min_move = self.p("min_move_bl", 1.5)
         for tid in np.unique(tids):
             m = tids == tid
             t = t_all[m]
             dm = depth[m]
+            xm, ym, sm = x[m], y[m], scale[m]
             for s, e in runs_min_duration(on_road[m], t, min_sec, max_gap_sec=gap):
                 if dm[s : e + 1].max() < min_depth_bl:
                     continue  # stayed at the kerb
+                reach = np.hypot(xm[s : e + 1] - xm[s], ym[s : e + 1] - ym[s]).max() / float(np.median(sm[s : e + 1]))
+                if reach < min_move:
+                    continue  # standing still: a person waiting, not walking across the road
                 out.append(Segment(float(t[s]), float(t[e]), self.label, conf, {"tracks": [int(tid)]}))
         return out

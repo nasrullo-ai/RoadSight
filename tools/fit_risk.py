@@ -19,6 +19,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import evaluate  # noqa: E402
+from roadsight.labels import load_gt  # noqa: E402
 from roadsight.risk import CausalRiskModel  # noqa: E402
 from roadsight.risk.features import FEATURES  # noqa: E402
 
@@ -50,7 +51,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
     from sklearn.linear_model import LogisticRegression
 
-    gt = json.loads(Path(args.gt).read_text(encoding="utf-8"))["videos"]
+    gt = load_gt(args.gt)
     model = CausalRiskModel.from_config()
     X, y, per_video = [], [], []
     for vid, g in sorted(gt.items()):
@@ -82,14 +83,14 @@ def main(argv=None) -> int:
     # Bias: maximise alarm F1 (uses the same smoothing as the model via the evaluator's alarm logic).
     best = (-1.0, float(clf.intercept_[0]))
     for b in np.linspace(clf.intercept_[0] - 4, clf.intercept_[0] + 2, 61):
-        pred = {"videos": {}}
-        gtv = {"videos": {}}
+        pred = {}
+        gtv = {}
         for vid, t, x, _ in per_video:
             z = b + x @ np.array([w[k] for k in FEATURES])
             s = 1 / (1 + np.exp(-z))
-            pred["videos"][vid] = {"risk": np.stack([t, s], 1).tolist(), "events": []}
-            gtv["videos"][vid] = gt[vid]
-        f1 = evaluate.score_b(pred, gtv).get("alarm_f1", 0.0)
+            pred[vid] = {"risk": np.stack([t, s], 1).tolist(), "events": []}
+            gtv[vid] = gt[vid]
+        f1 = (evaluate.evaluate_part_b(gtv, pred) or {}).get("f1_alarm", 0.0)
         if f1 > best[0]:
             best = (f1, float(b))
     w["bias"] = round(best[1], 4)
