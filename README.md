@@ -7,7 +7,7 @@ accident risk score (Part B). Everything runs offline on one GPU; all weights ar
 - Interface: [`solution.py`](solution.py) (`CLASSES`, `detect_events`, `RiskEstimator`); all logic lives in [`roadsight/`](roadsight/).
 - Organizer files, unchanged: [`run_submission.py`](run_submission.py), [`evaluate.py`](evaluate.py), [`examples/`](examples/).
 - Output on the four sample videos: [`predictions_samples.json`](predictions_samples.json).
-- Website with the live demo: **https://nasrulloai-roadsight.static.hf.space** (source in [`web/`](web/), hosting below). Task statement: [`task.txt`](task.txt); design notes: [`SPEC.md`](SPEC.md).
+- Website with the live demo: **https://demo.roadsight.online** (mirror of the pages: https://nasrulloai-roadsight.static.hf.space; source in [`web/`](web/), hosting below). Task statement: [`task.txt`](task.txt); design notes: [`SPEC.md`](SPEC.md).
 
 ## Install and run
 
@@ -176,22 +176,24 @@ all four samples (1.75x to 1.98x the video length on the RTX 3050 laptop GPU).
 
 ## Website and live demo
 
-Website: **https://nasrulloai-roadsight.static.hf.space** (Hugging Face Static Space
-[NasrulloAi/roadsight](https://huggingface.co/spaces/NasrulloAi/roadsight)). Pages: Home, Approach, Data (EDA), Results
-(every sample annotated, event timeline, risk curve, one example of each detected class, failure cases), Live demo,
-Report, Team, Links.
+Website with the live demo: **https://demo.roadsight.online**, a CPU server (6 vCPU, Ubuntu 24.04) running the FastAPI app
+`web/app.py` behind nginx with HTTPS: the pages, the sample renders and the demo API from one origin, online around the
+clock. The demo process runs as a systemd service capped at 3 cores and 4 GB; a 20 s 1080p upload takes about 75 s end to
+end, a 2-minute upload several minutes (the page shows progress; uploads are queued and analysed one at a time).
+Pages: Home, Approach, Data (EDA), Results (every sample annotated, event timeline, risk curve, one example of each
+detected class, failure cases), Live demo, Report, Team, Links. The same pages are mirrored on a Hugging Face Static Space
+([NasrulloAi/roadsight](https://huggingface.co/spaces/NasrulloAi/roadsight)), whose Demo page calls the server above.
 
-The pages are static files; the live demo needs the detector, which runs on the team's GPU machine: 
-`powershell -ExecutionPolicy Bypass -File tools\start_demo.ps1` starts the FastAPI backend (`web/app.py`, the same
-code and weights as the submission) and a Cloudflare quick tunnel, and writes the tunnel address to the Space's
-`data/api.json`. The Demo page reads that address, checks `/api/health`, and tells visitors when the demo server is
-offline instead of failing. API: `POST /api/analyze`, `GET /api/status/{id}`, `GET /api/result/{id}`,
-`GET /api/video/{id}`, `GET /api/json/{id}`; uploads up to 2 minutes and 100 MB, one at a time.
+API: `POST /api/analyze`, `GET /api/status/{id}`, `GET /api/result/{id}`, `GET /api/video/{id}`, `GET /api/json/{id}`;
+uploads up to 2 minutes and 100 MB. The Demo page reads the backend address from `data/api.json` (empty = same origin),
+checks `/api/health` and tells visitors when the demo server is offline instead of failing.
 
 - Local: `make demo` serves the whole site and the demo on http://localhost:7860.
-- Static site: `python tools/make_static_site.py` assembles `build/static-site/` (push it to the Space).
-- Self-contained alternative: `python tools/make_space.py` assembles a Docker Space with a CPU backend in `build/space/`
-  (Hugging Face now requires a paid plan for Docker Spaces).
+- Server deployment: `python tools/make_space.py` assembles the app in `build/space/` (code, pages, renders, small detector,
+  `requirements-space.txt` for CPU); on the server it runs as `uvicorn web.app:app --host 127.0.0.1 --port 7860`.
+- Static mirror: `python tools/make_static_site.py --api https://demo.roadsight.online` assembles `build/static-site/`.
+- Fallback without a server: `powershell -ExecutionPolicy Bypass -File tools\start_demo.ps1` serves the demo from a local
+  GPU machine through a Cloudflare quick tunnel and points the static mirror at it.
 - Refresh the sample renders with `make render` (annotated videos, timelines and one example per class, reusing the risk
   curves in `predictions_samples.json`) and the EDA with `make eda`.
 
