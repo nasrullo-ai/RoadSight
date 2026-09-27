@@ -52,6 +52,11 @@ class Detector:
         self.device = device
         on_cpu = device == "cpu"
         weights = cfg.get("weights_cpu", cfg["weights"]) if on_cpu else cfg["weights"]
+        if not resolve_path(weights).exists():  # e.g. the demo Space ships only the small model
+            spare = [w for w in (cfg["weights"], cfg.get("weights_cpu")) if w and resolve_path(w).exists()]
+            if spare:
+                log.warning("detector weights %s missing; using %s", weights, spare[0])
+                weights = spare[0]
         self.model = load_model(weights, device)
         self.imgsz = int(cfg.get("imgsz_cpu", cfg.get("imgsz", 640)) if on_cpu else cfg.get("imgsz", 640))
         self.half = bool(cfg.get("half", True)) and not on_cpu

@@ -44,9 +44,9 @@ def _writer(path: Path, fps: float, size: tuple[int, int]):
             codec="libx264",
             pix_fmt_in="rgb24",
             pix_fmt_out="yuv420p",
-            quality=6,
+            quality=None,
             macro_block_size=2,
-            output_params=["-movflags", "+faststart"],
+            output_params=["-crf", "28", "-preset", "medium", "-movflags", "+faststart"],  # ~30 MB per 5 min at 768 px
         )
         gen.send(None)
         return lambda frame: gen.send(np.ascontiguousarray(frame[:, :, ::-1])), gen.close
