@@ -40,9 +40,11 @@ def main(argv=None) -> int:
         if not (ROOT / "web" / "static" / need).exists():
             print(f"missing web/static/{need}: run `make render eda` first", file=sys.stderr)
             return 1
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    shutil.copytree(ROOT / "web" / "static", OUT)
+    if OUT.exists():  # keep an existing git clone of the Space (.git), replace everything else
+        for p in OUT.iterdir():
+            if p.name != ".git":
+                shutil.rmtree(p) if p.is_dir() else p.unlink()
+    shutil.copytree(ROOT / "web" / "static", OUT, dirs_exist_ok=True)
     shutil.copy2(ROOT / "predictions_samples.json", OUT / "data" / "predictions_samples.json")
     (OUT / "data" / "api.json").write_text(json.dumps({"api": args.api}, indent=2) + "\n", encoding="utf-8")
     (OUT / "README.md").write_text(README, encoding="utf-8")
